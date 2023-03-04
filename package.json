@@ -104,7 +104,7 @@
     "remark-gfm": "^3.0.1",
     "semver-compare": "^1.0.0",
     "stream-browserify": "^3.0.0",
-    "styled-components": "^5.3.5",
+    "styled-components": "^5.3.7",
     "ts-toolbelt": "^9.6.0",
     "uuid": "^9.0.0",
     "web3-eth-abi": "^1.7.0",
