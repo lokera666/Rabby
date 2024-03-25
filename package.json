@@ -107,8 +107,8 @@
     "styled-components": "^5.3.5",
     "ts-toolbelt": "^9.6.0",
     "uuid": "^9.0.0",
-    "web3-eth-abi": "^1.7.0",
-    "web3-utils": "^1.7.0",
+    "web3-eth-abi": "^4.0.1",
+    "web3-utils": "^4.2.1",
     "webextension-polyfill-ts": "^0.25.0"
   },
   "devDependencies": {
