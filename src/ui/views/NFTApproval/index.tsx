@@ -3,10 +3,9 @@ import {
   NFTApprovalContract,
   NFTApprovalResponse,
 } from '@/background/service/openapi';
-import { Account } from '@/background/service/preference';
 import { useRabbyDispatch, useRabbySelector } from '@/ui/store';
 import { message, Tabs, Tooltip } from 'antd';
-import { CHAINS, CHAINS_ENUM } from 'consts';
+import { CHAINS_ENUM } from 'consts';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHistory, useLocation } from 'react-router-dom';
@@ -19,6 +18,7 @@ import NFTList from './components/NFTList';
 import PopupSearch from './components/PopupSearch';
 import './style.less';
 import { getAmountText } from './utils';
+import { findChainByEnum } from '@/utils/chain';
 const { TabPane } = Tabs;
 
 const NFTApproval = () => {
@@ -67,7 +67,7 @@ const NFTApproval = () => {
     try {
       const data = await wallet.openapi.userNFTAuthorizedList(
         account.address,
-        CHAINS[chain]?.serverId
+        findChainByEnum(chain)?.serverId || ''
       );
       setData(data);
       setLoading(false);
@@ -97,7 +97,7 @@ const NFTApproval = () => {
             contractId: contract?.contract_id,
             spender: contract?.spender.id,
             abi,
-            tokenId: token?.inner_id,
+            nftTokenId: token?.inner_id,
             isApprovedForAll: true,
           },
           {
@@ -119,7 +119,7 @@ const NFTApproval = () => {
             contractId: token?.contract_id,
             spender: token?.spender?.id,
             abi,
-            tokenId: token?.inner_id,
+            nftTokenId: token?.inner_id,
             isApprovedForAll: false,
           },
           {

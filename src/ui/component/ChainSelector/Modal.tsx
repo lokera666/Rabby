@@ -1,16 +1,33 @@
-import { Drawer, Input } from 'antd';
-import React, { ReactNode, useCallback, useEffect, useState } from 'react';
+/* eslint "react-hooks/exhaustive-deps": ["error"] */
+/* eslint-enable react-hooks/exhaustive-deps */
+import { Button, Drawer, Input } from 'antd';
+import React, { ReactNode, useEffect, useMemo, useState } from 'react';
 
-import { useRabbyDispatch, useRabbySelector } from '@/ui/store';
+import { useRabbyDispatch, useRabbyGetter, useRabbySelector } from '@/ui/store';
 import { Chain } from 'background/service/openapi';
 import clsx from 'clsx';
-import { CHAINS, CHAINS_ENUM } from 'consts';
+import { CHAINS_ENUM } from 'consts';
 import IconSearch from 'ui/assets/search.svg';
+
+import { useWallet } from '@/ui/utils';
+import {
+  findChain,
+  findChainByEnum,
+  varyAndSortChainItems,
+} from '@/utils/chain';
+import { useTranslation } from 'react-i18next';
+import { useHistory } from 'react-router-dom';
 import Empty from '../Empty';
+import NetSwitchTabs, {
+  NetSwitchTabsKey,
+  useSwitchNetTab,
+} from '../PillsSwitch/NetSwitchTabs';
 import {
   SelectChainList,
   SelectChainListProps,
 } from './components/SelectChainList';
+import { LoadingBalances } from './LoadingBalances';
+
 interface ChainSelectorModalProps {
   visible: boolean;
   value?: CHAINS_ENUM;
@@ -21,19 +38,33 @@ interface ChainSelectorModalProps {
   className?: string;
   supportChains?: SelectChainListProps['supportChains'];
   disabledTips?: SelectChainListProps['disabledTips'];
+  hideTestnetTab?: boolean;
+  hideMainnetTab?: boolean;
   showRPCStatus?: boolean;
+  height?: number;
+  zIndex?: number;
 }
 
-const useSetup = () => {
+const useChainSeletorList = ({
+  supportChains,
+  netTabKey,
+}: {
+  supportChains?: Chain['enum'][];
+  netTabKey?: NetSwitchTabsKey;
+}) => {
   const [search, setSearch] = useState('');
-  const pinned = useRabbySelector(
-    (state) =>
-      state.preference.pinnedChain?.filter((item) => CHAINS[item]) || []
-  );
-  const dispatch = useRabbyDispatch();
+  const { pinned, chainBalances } = useRabbySelector((state) => {
+    return {
+      pinned: (state.preference.pinnedChain?.filter((item) =>
+        findChain({ enum: item })
+      ) || []) as CHAINS_ENUM[],
+      chainBalances:
+        netTabKey === 'testnet' ? {} : state.account.matteredChainBalances,
+      isShowTestnet: state.preference.isShowTestnet,
+    };
+  });
 
-  const _pinnedList = pinned.map((chain) => CHAINS[chain]);
-  const _all = Object.values(CHAINS).sort((a, b) => (a.name > b.name ? 1 : -1));
+  const dispatch = useRabbyDispatch();
 
   const handleStarChange = (chain: CHAINS_ENUM, value) => {
     if (value) {
@@ -45,33 +76,47 @@ const useSetup = () => {
   const handleSort = (chains: Chain[]) => {
     dispatch.preference.updatePinnedChainList(chains.map((item) => item.enum));
   };
-  const searchChains = useCallback(
-    (list: Chain[], input: string) => {
-      input = input?.trim().toLowerCase();
-      if (!input) {
-        return list.filter((item) => !pinned.includes(item.enum));
-      }
-      const res = list.filter((item) =>
-        [item.name, item.enum, item.nativeTokenSymbol].some((item) =>
-          item.toLowerCase().includes(input)
-        )
-      );
-      return res
-        .filter((item) => pinned.includes(item.enum))
-        .concat(res.filter((item) => !pinned.includes(item.enum)));
-    },
-    [pinned]
-  );
-  const pinnedList = search?.trim() ? [] : _pinnedList;
-  const all = searchChains(_all, search);
+  const { mainnetList, testnetList } = useRabbySelector((state) => {
+    return {
+      mainnetList: state.chains.mainnetList,
+      testnetList: state.chains.testnetList,
+    };
+  });
+  const { allSearched, matteredList, unmatteredList } = useMemo(() => {
+    const searchKw = search?.trim().toLowerCase();
+    const result = varyAndSortChainItems({
+      supportChains,
+      searchKeyword: searchKw,
+      matteredChainBalances: chainBalances,
+      pinned,
+      netTabKey,
+      mainnetList,
+      testnetList,
+    });
+
+    return {
+      allSearched: result.allSearched,
+      matteredList: searchKw ? [] : result.matteredList,
+      unmatteredList: searchKw ? [] : result.unmatteredList,
+    };
+  }, [
+    mainnetList,
+    testnetList,
+    search,
+    pinned,
+    supportChains,
+    chainBalances,
+    netTabKey,
+  ]);
 
   useEffect(() => {
     dispatch.preference.getPreference('pinnedChain');
   }, [dispatch]);
 
   return {
-    pinnedList,
-    all,
+    matteredList,
+    unmatteredList: search?.trim() ? allSearched : unmatteredList,
+    allSearched,
     handleStarChange,
     handleSort,
     search,
@@ -90,7 +135,11 @@ const ChainSelectorModal = ({
   className,
   supportChains,
   disabledTips,
+  hideTestnetTab = false,
+  hideMainnetTab = false,
   showRPCStatus = false,
+  height = 494,
+  zIndex,
 }: ChainSelectorModalProps) => {
   const handleCancel = () => {
     onCancel();
@@ -100,77 +149,142 @@ const ChainSelectorModal = ({
     onChange(val);
   };
 
+  const { isShowTestnet, selectedTab, onTabChange } = useSwitchNetTab({
+    hideTestnetTab,
+  });
+
+  const { t } = useTranslation();
+
+  const history = useHistory();
+
   const {
-    all,
-    pinnedList,
+    matteredList,
+    unmatteredList,
     handleStarChange,
     handleSort,
     search,
     setSearch,
     pinned,
-  } = useSetup();
+  } = useChainSeletorList({
+    supportChains,
+    netTabKey: !hideMainnetTab ? selectedTab : 'testnet',
+  });
+
+  useEffect(() => {
+    if (!value || !visible) return;
+
+    const chainItem = findChainByEnum(value);
+    onTabChange(chainItem?.isTestnet ? 'testnet' : 'mainnet');
+  }, [value, visible, onTabChange]);
+
+  const rDispatch = useRabbyDispatch();
+  const isLoading = useRabbyGetter(
+    (s) => s.account.isLoadingMateeredChainBalances
+  );
 
   useEffect(() => {
     if (!visible) {
       setSearch('');
+    } else {
+      rDispatch.account.getMatteredChainBalance();
     }
-  }, [visible]);
+  }, [visible, rDispatch, setSearch]);
 
   return (
-    <Drawer
-      title={title}
-      width="400px"
-      height={440}
-      closable={false}
-      placement={'bottom'}
-      visible={visible}
-      onClose={handleCancel}
-      className={clsx(
-        'chain-selector__modal',
-        connection && 'connection',
-        className
-      )}
-      destroyOnClose
-    >
-      <header className={title ? 'pt-[8px]' : 'pt-[20px]'}>
-        <Input
-          prefix={<img src={IconSearch} />}
-          placeholder="Search chain"
-          onChange={(e) => setSearch(e.target.value)}
-          value={search}
-          allowClear
-        />
-      </header>
-      <div className="chain-selector__modal-content">
-        <SelectChainList
-          supportChains={supportChains}
-          data={pinnedList}
-          sortable={!supportChains}
-          pinned={pinned as CHAINS_ENUM[]}
-          onStarChange={handleStarChange}
-          onSort={handleSort}
-          onChange={handleChange}
-          value={value}
-          disabledTips={disabledTips}
-          showRPCStatus={showRPCStatus}
-        ></SelectChainList>
-        <SelectChainList
-          supportChains={supportChains}
-          data={all}
-          value={value}
-          pinned={pinned as CHAINS_ENUM[]}
-          onStarChange={handleStarChange}
-          onChange={handleChange}
-          disabledTips={disabledTips}
-          showRPCStatus={showRPCStatus}
-        ></SelectChainList>
-        {pinnedList.length === 0 && all.length === 0 ? (
-          <div className="select-chain-list pt-[70px] pb-[120px]">
-            <Empty>No chains</Empty>
+    <>
+      <Drawer
+        title={title}
+        width="400px"
+        height={height}
+        closable={false}
+        placement={'bottom'}
+        visible={visible}
+        onClose={handleCancel}
+        className={clsx(
+          'custom-popup is-support-darkmode',
+          'chain-selector__modal',
+          // isLoading && 'disable-body-scroll',
+          connection && 'connection',
+          className
+        )}
+        zIndex={zIndex}
+        destroyOnClose
+      >
+        <header className={title ? 'pt-[8px]' : 'pt-[20px]'}>
+          {isShowTestnet && !hideMainnetTab && (
+            <NetSwitchTabs
+              value={selectedTab}
+              onTabChange={onTabChange}
+              className="h-[28px] box-content mt-[20px] mb-[20px]"
+            />
+          )}
+          {matteredList.length === 0 &&
+          unmatteredList.length === 0 &&
+          !search ? null : (
+            <Input
+              prefix={<img src={IconSearch} />}
+              // Search chain
+              placeholder={t('component.ChainSelectorModal.searchPlaceholder')}
+              onChange={(e) => setSearch(e.target.value)}
+              value={search}
+              allowClear
+            />
+          )}
+        </header>
+        {isLoading ? (
+          <div className="chain-selector__modal-content">
+            <LoadingBalances loading={isLoading} />
           </div>
-        ) : null}
-      </div>
-    </Drawer>
+        ) : (
+          <div className="chain-selector__modal-content">
+            <SelectChainList
+              supportChains={supportChains}
+              data={matteredList}
+              sortable={false /* !supportChains */}
+              pinned={pinned as CHAINS_ENUM[]}
+              onStarChange={handleStarChange}
+              onSort={handleSort}
+              onChange={handleChange}
+              value={value}
+              disabledTips={disabledTips}
+              showRPCStatus={showRPCStatus}
+            ></SelectChainList>
+            <SelectChainList
+              supportChains={supportChains}
+              data={unmatteredList}
+              value={value}
+              pinned={pinned as CHAINS_ENUM[]}
+              onStarChange={handleStarChange}
+              onChange={handleChange}
+              disabledTips={disabledTips}
+              showRPCStatus={showRPCStatus}
+            ></SelectChainList>
+
+            {matteredList.length === 0 && unmatteredList.length === 0 ? (
+              <div className="select-chain-list pt-[70px] bg-transparent">
+                <Empty>
+                  {/* No chains */}
+                  {t('component.ChainSelectorModal.noChains')}
+                </Empty>
+                {selectedTab === 'testnet' ? (
+                  <div className="text-center mt-[50px]">
+                    <Button
+                      type="primary"
+                      onClick={() => {
+                        history.push('/custom-testnet');
+                      }}
+                      className="w-[200px] h-[44px]"
+                    >
+                      {t('component.ChainSelectorModal.addTestnet')}
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </Drawer>
+    </>
   );
 };
 

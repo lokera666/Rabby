@@ -1,39 +1,48 @@
-import { CHAINS } from 'consts';
-import React, { useMemo } from 'react';
-import { useHistory } from 'react-router-dom';
+import { TooltipWithMagnetArrow } from '@/ui/component/Tooltip/TooltipWithMagnetArrow';
+import { getChainList, getMainnetChainList } from '@/utils/chain';
+import { Chain } from '@debank/common';
+import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { PageHeader } from 'ui/component';
 import './style.less';
 
-const ChainList = () => {
-  const history = useHistory();
-  const goBack = () => {
-    history.goBack();
-  };
-  const list = useMemo(
-    () =>
-      Object.values(CHAINS).sort((a, b) => {
-        if (a.name.toLowerCase() < b.name.toLowerCase()) return -1;
-        return 1;
-      }),
-    []
-  );
-
+const List = ({ list }: { list: Chain[] }) => {
   return (
-    <div className="page-chain-list">
-      <PageHeader onBack={goBack} fixed>
-        {list.length} chains supported
-      </PageHeader>
+    <div className="overflow-auto max-h-full">
       <div className="chain-list">
         {list.map((item) => {
           return (
             <div className="chain-list-item" key={item.id}>
               <img src={item.logo} alt="" />
-              {item.name}
+              <TooltipWithMagnetArrow
+                title={item.name}
+                className="rectangle w-[max-content]"
+              >
+                <span className="overflow-hidden overflow-ellipsis">
+                  {item.name}
+                </span>
+              </TooltipWithMagnetArrow>
             </div>
           );
         })}
         {list.length % 2 !== 0 && <div className="chain-list-item"></div>}
       </div>
+    </div>
+  );
+};
+
+const ChainList = () => {
+  const { t } = useTranslation();
+
+  const list = getChainList('mainnet');
+
+  return (
+    <div className="page-chain-list">
+      <PageHeader className="transparent-wrap" canBack={false} closeable fixed>
+        {t('page.chainList.title', { count: list.length })}
+      </PageHeader>
+
+      <List list={list} />
     </div>
   );
 };

@@ -1,11 +1,13 @@
+const child_process = require('child_process');
+const path = require('path');
+
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const TSConfigPathsPlugin = require('tsconfig-paths-webpack-plugin');
 const ESLintWebpackPlugin = require('eslint-webpack-plugin');
 const tsImportPluginFactory = require('ts-import-plugin');
 const AssetReplacePlugin = require('./plugins/AssetReplacePlugin');
-const { version } = require('../_raw/manifest.json');
-const path = require('path');
+const CopyPlugin = require('copy-webpack-plugin');
 
 const createStyledComponentsTransformer = require('typescript-plugin-styled-components')
   .default;
@@ -13,6 +15,11 @@ const createStyledComponentsTransformer = require('typescript-plugin-styled-comp
 const isEnvDevelopment = process.env.NODE_ENV !== 'production';
 
 const paths = require('./paths');
+
+const BUILD_GIT_HASH = child_process
+  .execSync('git log --format="%h" -n 1')
+  .toString()
+  .trim();
 
 const config = {
   entry: {
@@ -22,6 +29,7 @@ const config = {
       'node_modules/@rabby-wallet/page-provider/dist/index.js'
     ),
     ui: paths.rootResolve('src/ui/index.tsx'),
+    offscreen: paths.rootResolve('src/offscreen/scripts/offscreen.ts'),
   },
   output: {
     path: paths.dist,
@@ -206,27 +214,82 @@ const config = {
       chunks: ['background'],
       filename: 'background.html',
     }),
+    new HtmlWebpackPlugin({
+      inject: true,
+      template: paths.offscreenHtml,
+      chunks: ['offscreen'],
+      filename: 'offscreen.html',
+    }),
     new webpack.ProvidePlugin({
       Buffer: ['buffer', 'Buffer'],
       process: 'process',
       dayjs: 'dayjs',
     }),
-    new AssetReplacePlugin({
-      '#PAGEPROVIDER#': 'pageProvider',
-    }),
     new webpack.DefinePlugin({
-      'process.env.version': JSON.stringify(`version: ${version}`),
-      'process.env.release': JSON.stringify(version),
+      'process.env.version': JSON.stringify(`version: ${process.env.VERSION}`),
+      'process.env.release': JSON.stringify(process.env.VERSION),
+      'process.env.RABBY_BUILD_GIT_HASH': JSON.stringify(BUILD_GIT_HASH),
+      'process.env.ETHERSCAN_KEY': JSON.stringify(process.env.ETHERSCAN_KEY),
+    }),
+    new CopyPlugin({
+      patterns: [
+        { from: paths.rootResolve('_raw'), to: paths.rootResolve('dist') },
+        {
+          from: process.env.ENABLE_MV3
+            ? paths.rootResolve('src/manifest/mv3/manifest.json')
+            : paths.rootResolve('src/manifest/mv2/manifest.json'),
+          to: paths.dist,
+        },
+        process.env.ENABLE_MV3
+          ? {
+              from: require.resolve(
+                '@trezor/connect-webextension/build/content-script.js'
+              ),
+              to: paths.rootResolve(
+                'dist/vendor/trezor/trezor-content-script.js'
+              ),
+            }
+          : {
+              from: require.resolve(
+                '@trezor/connect-web/lib/webextension/trezor-content-script.js'
+              ),
+              to: paths.rootResolve(
+                'dist/vendor/trezor/trezor-content-script.js'
+              ),
+            },
+        process.env.ENABLE_MV3
+          ? {
+              from: require.resolve(
+                '@trezor/connect-webextension/build/trezor-connect-webextension.js'
+              ),
+              to: paths.rootResolve(
+                'dist/vendor/trezor/trezor-connect-webextension.js'
+              ),
+            }
+          : {
+              from: require.resolve(
+                '@trezor/connect-web/lib/webextension/trezor-usb-permissions.js'
+              ),
+              to: paths.rootResolve(
+                'dist/vendor/trezor/trezor-usb-permissions.js'
+              ),
+            },
+      ],
     }),
   ],
   resolve: {
     alias: {
       moment: require.resolve('dayjs'),
+      '@debank/common': require.resolve('@debank/common/dist/index-rabby'),
     },
     plugins: [new TSConfigPathsPlugin()],
     fallback: {
       stream: require.resolve('stream-browserify'),
       crypto: require.resolve('crypto-browserify'),
+      url: require.resolve('url'),
+      zlib: require.resolve('browserify-zlib'),
+      https: require.resolve('https-browserify'),
+      http: require.resolve('stream-http'),
     },
     extensions: ['.js', 'jsx', '.ts', '.tsx'],
   },
@@ -244,6 +307,7 @@ const config = {
     },
   },
   experiments: {
+    asyncWebAssembly: true,
     topLevelAwait: true,
   },
 };

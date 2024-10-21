@@ -3,8 +3,7 @@ import { MainContainer } from './MainContainer';
 import { useWallet } from '@/ui/utils';
 import { HARDWARE_KEYRING_TYPES } from '@/constant';
 import { Modal } from 'antd';
-import { ReactComponent as LedgerLogoSVG } from 'ui/assets/walletlogo/ledger.svg';
-import { ReactComponent as SettingSVG } from 'ui/assets/setting-outline.svg';
+import { ReactComponent as RcSettingSVG } from 'ui/assets/setting-outline.svg';
 import {
   AdvancedSettings,
   SettingData,
@@ -13,6 +12,8 @@ import {
 import { HDPathType } from './HDPathTypeButton';
 import { Account } from './AccountList';
 import { fetchAccountsInfo, HDManagerStateContext } from './utils';
+import { useTranslation } from 'react-i18next';
+import { Modal as CustomModal } from '@/ui/component';
 
 export type InitAccounts = {
   [key in HDPathType]: Account[];
@@ -121,21 +122,27 @@ export const LedgerManager: React.FC = () => {
   React.useEffect(() => {
     fetchInitAccountsTask();
   }, []);
+  const { t } = useTranslation();
 
   return (
     <>
-      <div className="setting" onClick={openAdvanced}>
-        <SettingSVG className="icon" />
-        <span className="title">Advanced Settings</span>
+      <div className="toolbar">
+        <div className="toolbar-item" onClick={openAdvanced}>
+          <RcSettingSVG className="icon text-r-neutral-title1" />
+          <span className="title">
+            {t('page.newAddress.hd.advancedSettings')}
+          </span>
+        </div>
       </div>
 
       <MainContainer setting={setting} loading={loading} HDName="Ledger" />
 
-      <Modal
+      <CustomModal
         destroyOnClose
-        className="AdvancedModal"
-        title="Custom Address HD path"
+        className="AdvancedModal modal-support-darkmode"
+        title={t('page.newAddress.hd.customAddressHdPath')}
         visible={visibleAdvanced}
+        centered
         width={840}
         footer={[]}
         onCancel={() => setVisibleAdvanced(false)}
@@ -145,7 +152,7 @@ export const LedgerManager: React.FC = () => {
           onConfirm={onConfirmAdvanced}
           initSettingData={setting}
         />
-      </Modal>
+      </CustomModal>
     </>
   );
 };

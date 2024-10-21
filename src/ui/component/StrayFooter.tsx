@@ -77,7 +77,7 @@ const StrayFooterNav = memo(
         <div
           className={cx(
             'py-20 px-20 w-full flex justify-center stray-footer-nav',
-            hasDivider && 'bg-white border-gray-divider border-t'
+            hasDivider && 'bg-r-neutral-bg-1 border-t-r-neutral-line border-t'
           )}
         >
           {hasBack && (
@@ -95,7 +95,7 @@ const StrayFooterNav = memo(
             htmlType="submit"
             onClick={onNextClick}
             size="large"
-            className={cx('lg:h-[52px]', hasBack ? 'flex-1' : 'w-[200px]')}
+            className={cx('lg:h-[52px]', 'flex-1')}
             type="primary"
             loading={nextLoading}
           >

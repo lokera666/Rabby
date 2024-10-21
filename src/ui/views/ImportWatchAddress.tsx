@@ -1,27 +1,26 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Input, Form } from 'antd';
 import { useHistory } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import QRCode from 'qrcode.react';
 import QRCodeReader from 'ui/component/QRCodeReader';
 import { isValidAddress } from 'ethereumjs-util';
-import WalletConnect from '@walletconnect/client';
-import { DEFAULT_BRIDGE } from '@rabby-wallet/eth-walletconnect-keyring';
 import { Popup, StrayPageWithButton } from 'ui/component';
 import { useWallet, useWalletRequest } from 'ui/utils';
 import { openInternalPageInTab } from 'ui/utils/webapi';
-import { KEYRING_CLASS } from 'consts';
-
+import { EVENTS, KEYRING_CLASS } from 'consts';
 import WatchLogo from 'ui/assets/waitcup.svg';
 import IconWalletconnect from 'ui/assets/walletconnect.svg';
 import IconScan from 'ui/assets/scan.svg';
 import IconArrowDown from 'ui/assets/big-arrow-down.svg';
 import IconEnter from 'ui/assets/enter.svg';
-import IconChecked from 'ui/assets/checked.svg';
 import { useMedia } from 'react-use';
 import clsx from 'clsx';
 import { Modal } from 'ui/component';
 import IconBack from 'ui/assets/icon-back.svg';
+import { useRepeatImportConfirm } from 'ui/utils/useRepeatImportConfirm';
+import eventBus from '@/eventBus';
+import { safeJSONParse } from '@/utils';
 
 const ImportWatchAddress = () => {
   const { t } = useTranslation();
@@ -33,7 +32,6 @@ const ImportWatchAddress = () => {
     false
   );
   const [QRScanModalVisible, setQRScanModalVisible] = useState(false);
-  const connector = useRef<WalletConnect>();
   const [walletconnectUri, setWalletconnectUri] = useState('');
   const [ensResult, setEnsResult] = useState<null | {
     addr: string;
@@ -42,9 +40,9 @@ const ImportWatchAddress = () => {
   const [tags, setTags] = useState<string[]>([]);
   const [importedAccounts, setImportedAccounts] = useState<any[]>([]);
   const isWide = useMedia('(min-width: 401px)');
-
+  const [isValidAddr, setIsValidAddr] = useState(false);
+  const { show, contextHolder } = useRepeatImportConfirm();
   const ModalComponent = isWide ? Modal : Popup;
-
   const [run, loading] = useWalletRequest(wallet.importWatchAddress, {
     onSuccess(accounts) {
       setDisableKeydown(false);
@@ -55,7 +53,7 @@ const ImportWatchAddress = () => {
         pathname: '/popup/import/success',
         state: {
           accounts: successShowAccounts,
-          title: t('Imported Successfully'),
+          title: t('page.newAddress.importedSuccessfully'),
           editing: true,
           importedAccount: true,
           importedLength: importedAccounts && importedAccounts?.length,
@@ -63,24 +61,33 @@ const ImportWatchAddress = () => {
       });
     },
     onError(err) {
-      setDisableKeydown(false);
-      form.setFields([
-        {
-          name: 'address',
-          errors: [err?.message || t('Not a valid address')],
-        },
-      ]);
+      if (err.message?.includes?.('DuplicateAccountError')) {
+        const address = safeJSONParse(err.message)?.address;
+        show({
+          address,
+          type: KEYRING_CLASS.WATCH,
+        });
+      } else {
+        setDisableKeydown(false);
+        form.setFields([
+          {
+            name: 'address',
+            errors: [
+              err?.message || t('page.newAddress.addContacts.notAValidAddress'),
+            ],
+          },
+        ]);
+      }
     },
   });
-
   const handleConfirmENS = (result: string) => {
     form.setFieldsValue({
       address: result,
     });
+    setIsValidAddr(true);
     setTags([`ENS: ${ensResult!.name}`]);
     setEnsResult(null);
   };
-
   const handleKeyDown = useMemo(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'enter') {
@@ -92,88 +99,73 @@ const ImportWatchAddress = () => {
     };
     return handler;
   }, [ensResult]);
-
-  useEffect(() => {
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [handleKeyDown]);
-
-  const handleImportByWalletconnect = async () => {
-    localStorage.removeItem('walletconnect');
-    connector.current = new WalletConnect({
-      bridge: DEFAULT_BRIDGE,
-      clientMeta: {
-        description: t('appDescription'),
-        url: 'https://rabby.io',
-        icons: ['https://rabby.io/assets/images/logo.png'],
-        name: 'Rabby',
-      },
+  const handleScanAccount = useCallback((data) => {
+    const address = data.address;
+    form.setFieldsValue({
+      address,
     });
-    connector.current.on('connect', async (error, payload) => {
-      if (error) {
-        handleImportByWalletconnect();
-      } else {
-        const { accounts } = payload.params[0];
-        form.setFieldsValue({
-          address: accounts[0],
-        });
-        await connector.current?.killSession();
-        setWalletconnectModalVisible(false);
-        setWalletconnectUri('');
-      }
-    });
-    connector.current.on('disconnect', () => {
-      setWalletconnectModalVisible(false);
-    });
-    await connector.current.createSession();
-    setWalletconnectUri(connector.current.uri);
-    setWalletconnectModalVisible(true);
-  };
-
-  const handleWalletconnectModalCancel = () => {
-    if (connector.current && connector.current.connected) {
-      connector.current.killSession();
+    if (isValidAddress(address)) {
+      setIsValidAddr(true);
     }
     setWalletconnectModalVisible(false);
-  };
+  }, []);
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    eventBus.addEventListener(
+      EVENTS.WALLETCONNECT.SCAN_ACCOUNT,
+      handleScanAccount
+    );
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      eventBus.removeEventListener(
+        EVENTS.WALLETCONNECT.SCAN_ACCOUNT,
+        handleScanAccount
+      );
+    };
+  }, [handleKeyDown]);
+  const handleImportByWalletconnect = async () => {
+    const uri = await wallet.walletConnectScanAccount();
 
+    setWalletconnectUri(uri!);
+    setWalletconnectModalVisible(true);
+  };
+  const handleWalletconnectModalCancel = () => {
+    setWalletconnectModalVisible(false);
+  };
   const handleScanQRCodeSuccess = (data) => {
     form.setFieldsValue({
       address: data,
     });
+    if (isValidAddress(data)) {
+      setIsValidAddr(true);
+    }
     setQRScanModalVisible(false);
     wallet.clearPageStateCache();
   };
-
   const handleQRScanModalCancel = () => {
     setQRScanModalVisible(false);
   };
-
   const handleScanQRCodeError = async () => {
     await wallet.setPageStateCache({
-      path: history.location.pathname,
+      path: '/import/watch-address',
       params: {},
       states: form.getFieldsValue(),
     });
     openInternalPageInTab('request-permission?type=camera');
   };
-
   const handleLoadCache = async () => {
     const cache = await wallet.getPageStateCache();
     if (cache && cache.path === history.location.pathname) {
       form.setFieldsValue(cache.states);
     }
   };
-
   const handleImportByQrcode = () => {
     setQRScanModalVisible(true);
   };
-
   const handleValuesChange = async ({ address }: { address: string }) => {
     setTags([]);
     if (!isValidAddress(address)) {
+      setIsValidAddr(false);
       try {
         const result = await wallet.openapi.getEnsAddressByName(address);
         setDisableKeydown(true);
@@ -184,15 +176,14 @@ const ImportWatchAddress = () => {
         setEnsResult(null);
       }
     } else {
+      setIsValidAddr(true);
       setEnsResult(null);
     }
   };
-
   const handleNextClick = () => {
     const address = form.getFieldValue('address');
     run(address);
   };
-
   const handleClickBack = () => {
     if (history.length > 1) {
       history.goBack();
@@ -213,7 +204,6 @@ const ImportWatchAddress = () => {
       wallet.clearPageStateCache();
     };
   }, []);
-
   return (
     <StrayPageWithButton
       custom={isWide}
@@ -228,53 +218,57 @@ const ImportWatchAddress = () => {
       }}
       disableKeyDownEvent={disableKeydown}
       onBackClick={handleClickBack}
-      NextButtonContent="Confirm"
+      NextButtonContent={t('global.confirm')}
+      nextDisabled={!isValidAddr}
     >
-      <header className="create-new-header create-password-header h-[264px] res">
+      {contextHolder}
+      <header className="create-new-header create-password-header h-[180px] py-[20px] dark:bg-r-blue-disable">
         <div className="rabby-container">
           <img
-            className="icon-back z-10 relative"
+            className="icon-back mb-0 z-10 relative"
             src={IconBack}
             alt="back"
             onClick={handleClickBack}
           />
-          <img
-            className="unlock-logo w-[80px] h-[75px] mb-28 mx-auto"
-            src={WatchLogo}
-          />
-          <p className="text-24 mb-4 mt-0 text-white text-center font-bold">
-            Add Contacts
-          </p>
-          <p className="text-14 mb-0 mt-4 text-white  text-center">
-            You can also use it as a watch-only address{' '}
-          </p>
-          <img src="/images/watch-mask.png" className="mask" />
+          <div className="relative -top-10">
+            <img className="w-[60px] h-[60px] mb-10 mx-auto" src={WatchLogo} />
+            <p className="text-20 mb-4 mt-0 text-white text-center font-bold">
+              {t('page.newAddress.addContacts.content')}
+            </p>
+            <p className="text-14 mb-0 mt-0 text-white text-center">
+              {t('page.newAddress.addContacts.description')}
+            </p>
+          </div>
         </div>
       </header>
-      <div className="rabby-container">
+      <div className="rabby-container widget-has-ant-input">
         <div className="relative">
           <Form.Item
             className="pt-32 px-20"
             name="address"
-            rules={[{ required: true, message: t('Please input address') }]}
+            rules={[
+              {
+                required: true,
+                message: t('page.newAddress.addContacts.required'),
+              },
+            ]}
           >
-            <Input
-              placeholder="Address / ENS"
-              size="large"
+            <Input.TextArea
+              placeholder={t('page.newAddress.addContacts.addressEns')}
               maxLength={44}
+              size="large"
+              className="border-bright-on-active leading-normal"
               autoFocus
+              autoSize
               spellCheck={false}
-              suffix={
-                ensResult ? (
-                  <img src={IconChecked} className="icon icon-checked" />
-                ) : null
-              }
             />
           </Form.Item>
           {tags.length > 0 && (
             <ul className="tags">
               {tags.map((tag) => (
-                <li key={tag}>{tag}</li>
+                <li className="border-none pl-0 py-0" key={tag}>
+                  {tag}
+                </li>
               ))}
             </ul>
           )}
@@ -296,14 +290,14 @@ const ImportWatchAddress = () => {
             onClick={handleImportByWalletconnect}
           >
             <img src={IconWalletconnect} className="icon icon-walletconnect" />
-            {t('Scan via mobile wallet')}
+            {t('page.newAddress.addContacts.scanViaMobileWallet')}
           </div>
           <div
             className="w-[172px] import-watchmode__button"
             onClick={handleImportByQrcode}
           >
             <img src={IconScan} className="icon icon-walletconnect" />
-            {t('Scan via PC camera')}
+            {t('page.newAddress.addContacts.scanViaPcCamera')}
           </div>
         </div>
       </div>
@@ -315,20 +309,18 @@ const ImportWatchAddress = () => {
         onCancel={handleWalletconnectModalCancel}
         // width={360}
       >
-        <p className="guide">
-          {t(' Scan QR codes with WalletConnect-compatible wallets')}
-        </p>
+        <p className="guide">{t('page.newAddress.addContacts.scanQRCode')}</p>
         <div className="symbol">
           <img src={IconWalletconnect} className="icon icon-walletconnect" />
-          Wallet connect
+          {t('page.newAddress.addContacts.walletConnect')}
         </div>
         {walletconnectUri && (
           <>
             <div className="qrcode">
               <QRCode value={walletconnectUri} size={176} />
             </div>
-            <div className="text-12 text-gray-content text-center  mt-12">
-              WalletConnect will be unstable if you use VPN.
+            <div className="text-12 text-r-neutral-foot text-center mt-12">
+              {t('page.newAddress.addContacts.walletConnectVPN')}
             </div>
           </>
         )}
@@ -342,7 +334,7 @@ const ImportWatchAddress = () => {
         // width={360}
         destroyOnClose
       >
-        <p className="guide">{t('Please scan the QR code with your camera')}</p>
+        <p className="guide">{t('page.newAddress.addContacts.cameraTitle')}</p>
         <img src={IconArrowDown} className="icon icon-arrow-down" />
         <div className="qrcode">
           <QRCodeReader

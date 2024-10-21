@@ -1,25 +1,26 @@
-import {
-  TokenItem,
-  TxDisplayItem,
-  TxHistoryItem,
-} from '@/background/service/openapi';
+import { TxDisplayItem, TxHistoryItem } from '@/background/service/openapi';
 import NFTAvatar from '@/ui/views/Dashboard/components/NFT/NFTAvatar';
 import React from 'react';
 import IconUnknown from 'ui/assets/token-default.svg';
 import { numberWithCommasIsLtOne } from 'ui/utils';
-
-export function getTokenSymbol(token: TokenItem) {
-  return (
-    token?.symbol || token?.optimized_symbol || token?.display_symbol || ''
-  );
-}
+import { getTokenSymbol } from 'ui/utils/token';
+import { TokenLabel } from './TokenLabel';
+import { useTranslation } from 'react-i18next';
 
 type TokenChangeProps = {
   data: TxDisplayItem | TxHistoryItem;
+  canClickToken?: boolean;
+  onClose?: () => void;
 } & Pick<TxDisplayItem, 'tokenDict'>;
 
-export const TokenChange = ({ data: info, tokenDict }: TokenChangeProps) => {
+export const TokenChange = ({
+  data: info,
+  tokenDict,
+  canClickToken = true,
+  onClose,
+}: TokenChangeProps) => {
   const tokens = tokenDict || {};
+  const { t } = useTranslation();
 
   if (!info.sends?.length && !info.receives?.length) {
     return null;
@@ -28,12 +29,14 @@ export const TokenChange = ({ data: info, tokenDict }: TokenChangeProps) => {
   return (
     <div className="ui token-change">
       {info.sends?.map((v) => {
-        const token = tokens[v.token_id];
+        const tokenId = v.token_id;
+        const tokenUUID = `${info.chain}_token:${tokenId}`;
+        const token = tokens[tokenId] || tokens[tokenUUID];
         const isNft = v.token_id?.length === 32;
         const symbol = getTokenSymbol(token);
         const name = isNft
           ? token?.name ||
-            (symbol ? `${symbol} ${token?.inner_id}` : 'Unknown NFT')
+            (symbol ? `${symbol} ${token?.inner_id}` : t('global.unknownNFT'))
           : symbol;
 
         return (
@@ -68,20 +71,27 @@ export const TokenChange = ({ data: info, tokenDict }: TokenChangeProps) => {
               -
             </span>
             <span className="token-change-item-text">
-              {`${
-                isNft ? v.amount : numberWithCommasIsLtOne(v.amount, 2)
-              } ${name}`}
+              {isNft ? v.amount : numberWithCommasIsLtOne(v.amount, 2)}
             </span>
+            <TokenLabel
+              isNft={isNft}
+              token={token}
+              canClickToken={isNft ? false : canClickToken}
+              onClose={onClose}
+            />
           </div>
         );
       })}
       {info.receives?.map((v) => {
-        const token = tokens[v.token_id];
+        const tokenId = v.token_id;
+        const tokenUUID = `${info.chain}_token:${tokenId}`;
+
+        const token = tokens[tokenId] || tokens[tokenUUID];
         const isNft = v.token_id?.length === 32;
         const symbol = getTokenSymbol(token);
         const name = isNft
           ? token?.name ||
-            (symbol ? `${symbol} ${token?.inner_id}` : 'Unknown NFT')
+            (symbol ? `${symbol} ${token?.inner_id}` : t('global.unknownNFT'))
           : symbol;
 
         return (
@@ -116,10 +126,14 @@ export const TokenChange = ({ data: info, tokenDict }: TokenChangeProps) => {
               +
             </span>
             <span className="token-change-item-text">
-              {`${
-                isNft ? v.amount : numberWithCommasIsLtOne(v.amount, 2)
-              } ${name}`}
+              {isNft ? v.amount : numberWithCommasIsLtOne(v.amount, 2)}
             </span>
+            <TokenLabel
+              isNft={isNft}
+              token={token}
+              canClickToken={canClickToken}
+              onClose={onClose}
+            />
           </div>
         );
       })}

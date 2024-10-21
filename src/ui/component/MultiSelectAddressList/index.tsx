@@ -76,7 +76,7 @@ const MultiSelectAddressList = ({
             disable={
               imported && (
                 <span className="rounded-full bg-gray-bg text-gray-comment text-12 px-[5px] py-[3px]">
-                  {t('Imported')}
+                  {t('component.MultiSelectAddressList.imported')}
                 </span>
               )
             }
@@ -86,7 +86,7 @@ const MultiSelectAddressList = ({
                 {account.index}
               </span>
               <span
-                className="text-15 font-medium text-gray-title"
+                className="text-15 font-medium text-r-neutral-title1"
                 title={account.address.toLowerCase()}
               >
                 {ellipsis(account.address.toLowerCase())}

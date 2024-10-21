@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Input, Form } from 'antd';
+import { Input, Form, message } from 'antd';
 import { useHistory } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import styled from 'styled-components';
-import { KEYRING_TYPE } from 'consts';
+import { KEYRING_CLASS, KEYRING_TYPE } from 'consts';
+import IconSuccess from 'ui/assets/success.svg';
 
 import { Navbar, StrayPageWithButton } from 'ui/component';
 import { useWallet, useWalletRequest } from 'ui/utils';
+import { clearClipboard } from 'ui/utils/clipboard';
 import { useMedia } from 'react-use';
 import clsx from 'clsx';
-import LessPalette from 'ui/style/var-defs';
+import { useRepeatImportConfirm } from '../utils/useRepeatImportConfirm';
+import { safeJSONParse } from '@/utils';
 
 const TipTextList = styled.div`
   margin-top: 32px;
@@ -17,7 +20,7 @@ const TipTextList = styled.div`
     font-weight: 700;
     font-size: 13px;
     line-height: 15px;
-    color: #13141a;
+    color: var(--r-neutral-title-1, #f7fafc);
     margin-top: 0;
     margin-bottom: 8px;
   }
@@ -25,7 +28,7 @@ const TipTextList = styled.div`
     font-weight: 400;
     font-size: 13px;
     line-height: 15px;
-    color: #4b4d59;
+    color: var(--r-neutral-body, #d3d8e0);
     margin: 0;
   }
   section + section {
@@ -43,16 +46,18 @@ const ImportPrivateKey = () => {
   );
   const isWide = useMedia('(min-width: 401px)');
 
+  const { show, contextHolder } = useRepeatImportConfirm();
   const [run, loading] = useWalletRequest(wallet.importPrivateKey, {
     onSuccess(accounts) {
       const successShowAccounts = accounts.map((item, index) => {
         return { ...item, index: index + 1 };
       });
+      clearClipboard();
       history.replace({
         pathname: '/popup/import/success',
         state: {
           accounts: successShowAccounts,
-          title: t('Imported Successfully'),
+          title: t('page.newAddress.importedSuccessfully'),
           editing: true,
           importedAccount: true,
           importedLength: importedAccountsLength,
@@ -60,12 +65,23 @@ const ImportPrivateKey = () => {
       });
     },
     onError(err) {
-      form.setFields([
-        {
-          name: 'key',
-          errors: [err?.message || t('Not a valid private key')],
-        },
-      ]);
+      if (err.message?.includes?.('DuplicateAccountError')) {
+        const address = safeJSONParse(err.message)?.address;
+        show({
+          address,
+          type: KEYRING_CLASS.PRIVATE_KEY,
+        });
+      } else {
+        form.setFields([
+          {
+            name: 'key',
+            errors: [
+              err?.message ||
+                t('page.newAddress.privateKey.notAValidPrivateKey'),
+            ],
+          },
+        ]);
+      }
     },
   });
 
@@ -90,6 +106,7 @@ const ImportPrivateKey = () => {
 
   return (
     <>
+      {contextHolder}
       <StrayPageWithButton
         custom={isWide}
         spinning={loading}
@@ -99,11 +116,11 @@ const ImportPrivateKey = () => {
         hasDivider
         noPadding
         className={clsx(isWide && 'rabby-stray-page')}
-        NextButtonContent="Confirm"
+        NextButtonContent={t('global.confirm')}
         formProps={{
           onValuesChange: (states) => {
             wallet.setPageStateCache({
-              path: history.location.pathname,
+              path: '/import/key',
               params: {},
               states,
             });
@@ -127,36 +144,78 @@ const ImportPrivateKey = () => {
             }
           }}
         >
-          Import Private Key
+          {t('page.newAddress.importPrivateKey')}
         </Navbar>
-        <div className="rabby-container">
+        <div className="rabby-container widget-has-ant-input">
           <div className="px-20 pt-24">
             <Form.Item
               name="key"
               rules={[
-                { required: true, message: t('Please input Private key') },
+                {
+                  required: true,
+                  message: t('page.newAddress.privateKey.required'),
+                },
               ]}
             >
               <Input
-                className={'h-[52px] p-16'}
-                placeholder={t('Enter your Private key')}
+                className={'h-[52px] p-16 border-bright-on-active'}
+                placeholder={t('page.newAddress.privateKey.placeholder')}
                 autoFocus
                 spellCheck={false}
                 type="password"
+                onPaste={() => {
+                  clearClipboard();
+                  message.success({
+                    icon: (
+                      <img src={IconSuccess} className="icon icon-success" />
+                    ),
+                    content: t('page.newAddress.seedPhrase.pastedAndClear'),
+                    duration: 2,
+                  });
+                }}
               />
             </Form.Item>
             <TipTextList className="mt-32">
               <section>
-                <h3>What is a private key?</h3>
+                <h3>
+                  {t('page.newAddress.privateKey.whatIsAPrivateKey.question')}
+                </h3>
                 <p>
-                  A string of letters and numbers used to control your assets.
+                  {t('page.newAddress.privateKey.whatIsAPrivateKey.answer')}
                 </p>
               </section>
               <section>
-                <h3>Is it safe to import it in Rabby?</h3>
+                <h3>
+                  {t(
+                    'page.newAddress.privateKey.isItSafeToImportItInRabby.question'
+                  )}
+                </h3>
                 <p>
-                  Yes, it will be stored locally on your browser and only
-                  accessible to you.{' '}
+                  {t(
+                    'page.newAddress.privateKey.isItSafeToImportItInRabby.answer'
+                  )}
+                </p>
+              </section>
+              <section>
+                <h3>
+                  {t(
+                    'page.newAddress.privateKey.isItPossibleToImportKeystore.question'
+                  )}
+                </h3>
+                <p>
+                  <Trans
+                    t={t}
+                    i18nKey="page.newAddress.privateKey.isItPossibleToImportKeystore.answer"
+                  >
+                    Yes, you can
+                    <a
+                      className="underline text-r-blue-default cursor-pointer"
+                      onClick={() => history.push('/import/json')}
+                    >
+                      import KeyStore
+                    </a>
+                    here.
+                  </Trans>
                 </p>
               </section>
             </TipTextList>

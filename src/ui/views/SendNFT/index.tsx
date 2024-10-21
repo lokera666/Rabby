@@ -1,14 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import * as Sentry from '@sentry/browser';
-import ClipboardJS from 'clipboard';
 import clsx from 'clsx';
 import BigNumber from 'bignumber.js';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { useHistory, useLocation } from 'react-router-dom';
 import { matomoRequestEvent } from '@/utils/matomo-request';
 import { Input, Form, message, Button } from 'antd';
 import { isValidAddress } from 'ethereumjs-util';
-import { providers } from 'ethers';
 import {
   CHAINS,
   KEYRING_PURPLE_LOGOS,
@@ -19,33 +16,41 @@ import { useRabbyDispatch, useRabbySelector, connectStore } from 'ui/store';
 import { Account } from 'background/service/preference';
 import { NFTItem } from '@/background/service/openapi';
 import { UIContactBookItem } from 'background/service/contactBook';
-import { useWallet, isSameAddress } from 'ui/utils';
-import { getTokenName } from 'ui/utils/token';
+import { useWallet, isSameAddress, openInTab } from 'ui/utils';
 import AccountCard from '../Approval/components/AccountCard';
-import TagChainSelector from 'ui/component/ChainSelector/tag';
-import { PageHeader, AddressViewer } from 'ui/component';
+import { PageHeader, AddressViewer, Copy } from 'ui/component';
 import AuthenticationModalPromise from 'ui/component/AuthenticationModal';
 import ContactEditModal from 'ui/component/Contact/EditModal';
 import ContactListModal from 'ui/component/Contact/ListModal';
 import NumberInput from '@/ui/component/NFTNumberInput';
 import NFTAvatar from 'ui/views/Dashboard/components/NFT/NFTAvatar';
-import IconWhitelist from 'ui/assets/dashboard/whitelist.svg';
-import IconEdit from 'ui/assets/edit-purple.svg';
-import IconCopy from 'ui/assets/copy-no-border.svg';
-import IconSuccess from 'ui/assets/success.svg';
-import IconCheck from 'ui/assets/icon-check.svg';
-import IconContact from 'ui/assets/send-token/contact.svg';
-import IconTemporaryGrantCheckbox from 'ui/assets/send-token/temporary-grant-checkbox.svg';
-import { SvgIconLoading, SvgAlert } from 'ui/assets';
+import IconWhitelist, {
+  ReactComponent as RcIconWhitelist,
+} from 'ui/assets/dashboard/whitelist.svg';
+import { ReactComponent as RcIconEdit } from 'ui/assets/edit-purple.svg';
+import IconContact, {
+  ReactComponent as RcIconContact,
+} from 'ui/assets/send-token/contact.svg';
+import IconCheck, {
+  ReactComponent as RcIconCheck,
+} from 'ui/assets/send-token/check.svg';
+import IconTemporaryGrantCheckbox, {
+  ReactComponent as RcIconTemporaryGrantCheckbox,
+} from 'ui/assets/send-token/temporary-grant-checkbox.svg';
 import './style.less';
 import { getKRCategoryByType } from '@/utils/transaction';
 import { filterRbiSource, useRbiSource } from '@/ui/utils/ga-event';
+import { ReactComponent as RcIconExternal } from 'ui/assets/icon-share-currentcolor.svg';
+import { ReactComponent as RcIconCopy } from 'ui/assets/icon-copy-2-currentcolor.svg';
 
-const TOKEN_VALIDATION_STATUS = {
-  PENDING: 0,
-  SUCCESS: 1,
-  FAILD: 2,
-};
+import { findChain, findChainByEnum } from '@/utils/chain';
+import ChainSelectorInForm from '@/ui/component/ChainSelector/InForm';
+import AccountSearchInput from '@/ui/component/AccountSearchInput';
+import { confirmAllowTransferToPromise } from '../SendToken/components/ModalConfirmAllowTransfer';
+import { confirmAddToContactsModalPromise } from '../SendToken/components/ModalConfirmAddToContacts';
+import { useContactAccounts } from '@/ui/hooks/useContact';
+import ThemeIcon from '@/ui/component/ThemeMode/ThemeIcon';
+import { getAddressScanLink } from '@/utils';
 
 const SendNFT = () => {
   const wallet = useWallet();
@@ -63,18 +68,18 @@ const SendNFT = () => {
   );
   const [chain, setChain] = useState<CHAINS_ENUM | undefined>(
     state?.nftItem
-      ? Object.values(CHAINS).find(
-          (item) => item.serverId === state.nftItem.chain
-        )?.enum
+      ? findChain({
+          serverId: state.nftItem.chain,
+        })?.enum
       : undefined
   );
-  const chainName = CHAINS[chain as string]?.name;
 
   const amountInputEl = useRef<any>(null);
 
   const { useForm } = Form;
 
   const [form] = useForm<{ to: string; amount: number }>();
+  const [formSnapshot, setFormSnapshot] = useState(form.getFieldsValue());
   const [contactInfo, setContactInfo] = useState<null | UIContactBookItem>(
     null
   );
@@ -86,32 +91,48 @@ const SendNFT = () => {
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [showWhitelistAlert, setShowWhitelistAlert] = useState(false);
   const [temporaryGrant, setTemporaryGrant] = useState(false);
-  const [toAddressInWhitelist, setToAddressInWhitelist] = useState(false);
-  const [tokenValidationStatus, setTokenValidationStatus] = useState(
-    TOKEN_VALIDATION_STATUS.PENDING
-  );
 
   const { whitelist, whitelistEnabled } = useRabbySelector((s) => ({
     whitelist: s.whitelist.whitelist,
     whitelistEnabled: s.whitelist.enabled,
   }));
 
+  const {
+    getAddressNote,
+    isAddrOnContactBook,
+    fetchContactAccounts,
+  } = useContactAccounts();
+
+  const {
+    toAddressIsValid,
+    toAddressInWhitelist,
+    toAddressInContactBook,
+  } = useMemo(() => {
+    return {
+      toAddressIsValid: !!formSnapshot.to && isValidAddress(formSnapshot.to),
+      toAddressInWhitelist: !!whitelist.find((item) =>
+        isSameAddress(item, formSnapshot.to)
+      ),
+      toAddressInContactBook: !!isAddrOnContactBook(formSnapshot.to),
+    };
+  }, [whitelist, isAddrOnContactBook, formSnapshot]);
+
   const whitelistAlertContent = useMemo(() => {
     if (!whitelistEnabled) {
       return {
-        content: 'Whitelist disabled. You can transfer to any address.',
+        content: t('page.sendNFT.whitelistAlert__disabled'),
         success: true,
       };
     }
     if (toAddressInWhitelist) {
       return {
-        content: 'The address is whitelisted',
+        content: t('page.sendNFT.whitelistAlert__whitelisted'),
         success: true,
       };
     }
     if (temporaryGrant) {
       return {
-        content: 'Temporary permission granted',
+        content: t('page.sendNFT.whitelistAlert__temporaryGranted'),
         success: true,
       };
     }
@@ -119,42 +140,28 @@ const SendNFT = () => {
       success: false,
       content: (
         <>
-          The address is not whitelisted.
-          <br /> I agree to grant temporary permission to transfer.
+          <Trans i18nKey="page.sendNFT.whitelistAlert__notWhitelisted" t={t}>
+            The address is not whitelisted.
+            <br /> I agree to grant temporary permission to transfer.
+          </Trans>
         </>
       ),
     };
-  }, [temporaryGrant, whitelist, toAddressInWhitelist, whitelistEnabled]);
+  }, [temporaryGrant, whitelist, toAddressInWhitelist, whitelistEnabled, t]);
 
   const canSubmit =
     isValidAddress(form.getFieldValue('to')) &&
     new BigNumber(form.getFieldValue('amount')).isGreaterThan(0) &&
-    tokenValidationStatus === TOKEN_VALIDATION_STATUS.SUCCESS &&
     (!whitelistEnabled || temporaryGrant || toAddressInWhitelist);
-  const handleCopyContractAddress = () => {
-    const clipboard = new ClipboardJS('.transfer-nft', {
-      text: function () {
-        if (!nftItem) return '';
-        return nftItem.contract_id;
-      },
-    });
+  const handleClickContractId = () => {
+    if (!chain || !nftItem) return;
+    const targetChain = findChainByEnum(chain);
+    if (!targetChain) return;
 
-    clipboard.on('success', () => {
-      message.success({
-        duration: 3,
-        icon: <i />,
-        content: (
-          <div>
-            <div className="flex gap-4 mb-4">
-              <img src={IconSuccess} alt="" />
-              Copied
-            </div>
-            <div className="text-white">{nftItem?.contract_id}</div>
-          </div>
-        ),
-      });
-      clipboard.destroy();
-    });
+    openInTab(
+      getAddressScanLink(targetChain.scanLink, nftItem.contract_id),
+      false
+    );
   };
 
   const handleFormValuesChange = async (
@@ -175,10 +182,8 @@ const SendNFT = () => {
     } else {
       setEditBtnDisabled(false);
       setShowWhitelistAlert(true);
-      setToAddressInWhitelist(
-        !!whitelist.find((item) => isSameAddress(item, to))
-      );
     }
+    setFormSnapshot({ ...form.getFieldsValue(), to });
     const alianName = await wallet.getAlianName(to.toLowerCase());
     if (alianName) {
       setContactInfo({ address: to, name: alianName });
@@ -197,7 +202,7 @@ const SendNFT = () => {
   }) => {
     if (!nftItem) return;
     await wallet.setPageStateCache({
-      path: history.location.pathname,
+      path: '/send-nft',
       search: history.location.search,
       params: {},
       states: {
@@ -210,7 +215,7 @@ const SendNFT = () => {
         category: 'Send',
         action: 'createTx',
         label: [
-          chainName,
+          findChainByEnum(chain)?.name,
           getKRCategoryByType(currentAccount?.type),
           currentAccount?.brandName,
           'nft',
@@ -241,20 +246,46 @@ const SendNFT = () => {
     }
   };
 
-  const handleClickWhitelistAlert = () => {
-    if (whitelistEnabled && !temporaryGrant && !toAddressInWhitelist) {
-      AuthenticationModalPromise({
-        title: 'Enter the Password to Confirm',
-        cancelText: 'Cancel',
-        wallet,
-        onFinished() {
-          setTemporaryGrant(true);
-        },
-        onCancel() {
-          // do nothing
-        },
-      });
-    }
+  const handleClickAllowTransferTo = () => {
+    if (!whitelistEnabled || temporaryGrant || toAddressInWhitelist) return;
+
+    const toAddr = form.getFieldValue('to');
+    confirmAllowTransferToPromise({
+      wallet,
+      toAddr,
+      showAddToWhitelist: !!toAddressInContactBook,
+      title: t('page.sendNFT.confirmModal.title'),
+      cancelText: t('global.Cancel'),
+      confirmText: t('global.Confirm'),
+      onFinished(result) {
+        dispatch.whitelist.getWhitelist();
+        setTemporaryGrant(true);
+      },
+    });
+  };
+
+  const handleClickAddContact = () => {
+    if (toAddressInContactBook) return;
+
+    const toAddr = form.getFieldValue('to');
+    confirmAddToContactsModalPromise({
+      wallet,
+      initAddressNote: getAddressNote(toAddr),
+      addrToAdd: toAddr,
+      title: 'Add to contacts',
+      confirmText: 'Confirm',
+      async onFinished(result) {
+        await dispatch.contactBook.getContactBookAsync();
+        // trigger fetch contactInfo
+        const values = form.getFieldsValue();
+        handleFormValuesChange(null, { ...values });
+        await Promise.allSettled([
+          fetchContactAccounts(),
+          // trigger get balance of address
+          wallet.getInMemoryAddressBalance(result.contactAddrAdded, true),
+        ]);
+      },
+    });
   };
 
   const handleConfirmContact = (account: UIContactBookItem) => {
@@ -264,14 +295,12 @@ const SendNFT = () => {
     const values = form.getFieldsValue();
     const to = account ? account.address : '';
     if (!account) return;
-    form.setFieldsValue({
+    const nextFormValues = {
       ...values,
       to,
-    });
-    handleFormValuesChange(null, {
-      ...values,
-      to,
-    });
+    };
+    form.setFieldsValue(nextFormValues);
+    handleFormValuesChange(null, nextFormValues);
     amountInputEl.current && amountInputEl.current.focus();
   };
 
@@ -289,7 +318,11 @@ const SendNFT = () => {
   };
 
   const handleClickBack = () => {
-    history.replace('/');
+    if (history.length > 1) {
+      history.goBack();
+    } else {
+      history.push('/');
+    }
   };
 
   const initByCache = async () => {
@@ -312,6 +345,7 @@ const SendNFT = () => {
   const init = async () => {
     dispatch.whitelist.getWhitelistEnabled();
     dispatch.whitelist.getWhitelist();
+    dispatch.contactBook.getContactBookAsync();
     const account = await wallet.syncGetCurrentAccount();
 
     if (!account) {
@@ -326,33 +360,6 @@ const SendNFT = () => {
   const getAlianName = async () => {
     const alianName = await wallet.getAlianName(currentAccount?.address || '');
     setSendAlianName(alianName || '');
-  };
-
-  const validateNFT = async () => {
-    if (!nftItem) return;
-    try {
-      const customRPC = await wallet.getCustomRpcByChain(chain!);
-      setTokenValidationStatus(TOKEN_VALIDATION_STATUS.PENDING);
-      const name = await getTokenName(
-        nftItem.contract_id,
-        new providers.JsonRpcProvider(customRPC || CHAINS[chain!].thridPartyRPC)
-      );
-      if (name === nftItem.contract_name) {
-        setTokenValidationStatus(TOKEN_VALIDATION_STATUS.SUCCESS);
-      } else {
-        Sentry.captureException(new Error('NFT validation failed'), (scope) => {
-          scope.setTag('id', `${nftItem.chain}-${nftItem.contract_id}`);
-          return scope;
-        });
-        setTokenValidationStatus(TOKEN_VALIDATION_STATUS.FAILD);
-      }
-    } catch (e) {
-      Sentry.captureException(new Error('NFT validation failed'), (scope) => {
-        scope.setTag('id', `${nftItem.chain}-${nftItem.contract_id}`);
-        return scope;
-      });
-      setTokenValidationStatus(TOKEN_VALIDATION_STATUS.FAILD);
-    }
   };
 
   useEffect(() => {
@@ -375,16 +382,14 @@ const SendNFT = () => {
   useEffect(() => {
     if (nftItem) {
       if (!chain) {
-        const nftChain = Object.values(CHAINS).find(
-          (item) => item.serverId === nftItem.chain
-        )?.enum;
+        const nftChain = findChain({
+          serverId: nftItem.chain,
+        })?.enum;
         if (!nftChain) {
           history.replace('/');
         } else {
           setChain(nftChain);
         }
-      } else {
-        validateNFT();
       }
     }
   }, [nftItem, chain]);
@@ -392,7 +397,7 @@ const SendNFT = () => {
   return (
     <div className="transfer-nft">
       <PageHeader onBack={handleClickBack} forceShowBack>
-        {t('Send NFT')}
+        {t('page.sendNFT.header.title')}
       </PageHeader>
       {nftItem && (
         <Form
@@ -404,151 +409,186 @@ const SendNFT = () => {
           }}
           onValuesChange={handleFormValuesChange}
         >
-          {chain && <TagChainSelector value={chain!} readonly />}
-          <div className="section relative">
-            <div className="section-title">{t('From')}</div>
-            <AccountCard
-              icons={{
-                mnemonic: KEYRING_PURPLE_LOGOS[KEYRING_CLASS.MNEMONIC],
-                privatekey: KEYRING_PURPLE_LOGOS[KEYRING_CLASS.PRIVATE_KEY],
-                watch: KEYRING_PURPLE_LOGOS[KEYRING_CLASS.WATCH],
-              }}
-              alianName={sendAlianName}
-            />
-            <div className="section-title">
-              <span className="section-title__to">{t('To')}</span>
-              <div className="flex flex-1 justify-end items-center">
-                {showContactInfo && (
-                  <div
-                    className={clsx('contact-info', {
-                      disabled: editBtnDisabled,
-                    })}
-                    onClick={handleEditContact}
-                  >
-                    {contactInfo && (
-                      <>
-                        <img src={IconEdit} className="icon icon-edit" />
-                        <span
-                          title={contactInfo.name}
-                          className="inline-block align-middle truncate max-w-[240px]"
-                        >
-                          {contactInfo.name}
-                        </span>
-                      </>
-                    )}
+          <div className="flex-1 overflow-auto">
+            <div className="section relative">
+              {/* {chain && <TagChainSelector value={chain!} readonly />} */}
+              {chain && (
+                <>
+                  <div className={clsx('section-title')}>
+                    {t('page.sendNFT.sectionChain.title')}
                   </div>
-                )}
-                <img
-                  className="icon icon-contact"
-                  src={whitelistEnabled ? IconWhitelist : IconContact}
-                  onClick={handleListContact}
-                />
-              </div>
-            </div>
-            <div className="to-address">
-              <Form.Item
-                name="to"
-                rules={[
-                  { required: true, message: t('Please input address') },
-                  {
-                    validator(_, value) {
-                      if (!value) return Promise.resolve();
-                      if (value && isValidAddress(value)) {
-                        return Promise.resolve();
-                      }
-                      return Promise.reject(
-                        new Error(t('This address is invalid'))
-                      );
-                    },
-                  },
-                ]}
-              >
-                <Input
-                  placeholder={t('Enter the address')}
-                  autoComplete="off"
-                  autoFocus
-                />
-              </Form.Item>
-            </div>
-          </div>
-          <div
-            className={clsx('section', {
-              'mb-40':
-                !showWhitelistAlert &&
-                tokenValidationStatus === TOKEN_VALIDATION_STATUS.SUCCESS,
-            })}
-          >
-            <div className="nft-info flex">
-              <NFTAvatar
-                type={nftItem.content_type}
-                content={nftItem.content}
-                className="w-[72px] h-[72px]"
-              />
-              <div className="nft-info__detail">
-                <h3>{nftItem.name}</h3>
-                <p>
-                  <span className="field-name">Collection</span>
-                  <span className="value">
-                    {nftItem.collection?.name || '-'}
-                  </span>
-                </p>
-                <p>
-                  <span className="field-name">Contract</span>
-                  <span className="value">
-                    <AddressViewer
-                      address={nftItem.contract_id}
-                      showArrow={false}
-                    />
-                    <img
-                      src={IconCopy}
-                      className="icon icon-copy"
-                      onClick={handleCopyContractAddress}
-                    />
-                  </span>
-                </p>
-              </div>
-            </div>
-            <div className="section-footer">
-              <span>Send amount</span>
-
-              <Form.Item name="amount">
-                <NumberInput
-                  max={nftItem.amount}
-                  nftItem={nftItem}
-                  disabled={!nftItem.is_erc1155}
-                  ref={amountInputEl}
-                />
-              </Form.Item>
-            </div>
-          </div>
-
-          {tokenValidationStatus !== TOKEN_VALIDATION_STATUS.SUCCESS && (
-            <div
-              className={clsx('token-validation', {
-                pending:
-                  tokenValidationStatus === TOKEN_VALIDATION_STATUS.PENDING,
-                faild: tokenValidationStatus === TOKEN_VALIDATION_STATUS.FAILD,
-              })}
-            >
-              {tokenValidationStatus === TOKEN_VALIDATION_STATUS.PENDING ? (
-                <>
-                  <SvgIconLoading
-                    className="icon icon-loading"
-                    viewBox="0 0 36 36"
-                  />
-                  {t('Verifying token info ...')}
-                </>
-              ) : (
-                <>
-                  <SvgAlert className="icon icon-alert" viewBox="0 0 14 14" />
-                  {t('Token verification failed')}
+                  <ChainSelectorInForm value={chain} readonly />
                 </>
               )}
+              <div className="section-title mt-[10px]">
+                {t('page.sendNFT.sectionFrom.title')}
+              </div>
+              <AccountCard
+                icons={{
+                  mnemonic: KEYRING_PURPLE_LOGOS[KEYRING_CLASS.MNEMONIC],
+                  privatekey: KEYRING_PURPLE_LOGOS[KEYRING_CLASS.PRIVATE_KEY],
+                  watch: KEYRING_PURPLE_LOGOS[KEYRING_CLASS.WATCH],
+                }}
+                alianName={sendAlianName}
+              />
+              <div className="section-title">
+                <span className="section-title__to">
+                  {t('page.sendNFT.sectionTo.title')}
+                </span>
+                <div className="flex flex-1 justify-end items-center">
+                  {showContactInfo && (
+                    <div
+                      className={clsx('contact-info', {
+                        disabled: editBtnDisabled,
+                      })}
+                      onClick={handleEditContact}
+                    >
+                      {contactInfo && (
+                        <>
+                          <ThemeIcon
+                            src={RcIconEdit}
+                            className="icon icon-edit"
+                          />
+                          <span
+                            title={contactInfo.name}
+                            className="inline-block align-middle truncate max-w-[240px]"
+                          >
+                            {contactInfo.name}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <ThemeIcon
+                    className="icon icon-contact"
+                    src={whitelistEnabled ? RcIconWhitelist : RcIconContact}
+                    onClick={handleListContact}
+                  />
+                </div>
+              </div>
+              <div className="to-address">
+                <Form.Item
+                  name="to"
+                  rules={[
+                    {
+                      required: true,
+                      message: t('page.sendNFT.sectionTo.addrValidator__empty'),
+                    },
+                    {
+                      validator(_, value) {
+                        if (!value) return Promise.resolve();
+                        if (value && isValidAddress(value)) {
+                          return Promise.resolve();
+                        }
+                        return Promise.reject(
+                          new Error(
+                            t('page.sendNFT.sectionTo.addrValidator__invalid')
+                          )
+                        );
+                      },
+                    },
+                  ]}
+                >
+                  <AccountSearchInput
+                    placeholder={t(
+                      'page.sendNFT.sectionTo.searchInputPlaceholder'
+                    )}
+                    autoComplete="off"
+                    autoFocus
+                    spellCheck={false}
+                    onSelectedAccount={(account) => {
+                      const nextVals = {
+                        ...form.getFieldsValue(),
+                        to: account.address,
+                      };
+                      form.setFieldsValue(nextVals);
+                      handleFormValuesChange(
+                        {
+                          to: nextVals.to,
+                        },
+                        nextVals
+                      );
+                    }}
+                  />
+                </Form.Item>
+                {toAddressIsValid && !toAddressInContactBook && (
+                  <div className="tip-no-contact font-normal text-[12px] text-r-neutral-body pt-[12px]">
+                    {/* Not on address list.{' '} */}
+                    {t('page.sendNFT.tipNotOnAddressList')}{' '}
+                    <span
+                      onClick={handleClickAddContact}
+                      className={clsx(
+                        'ml-[2px] underline cursor-pointer text-r-blue-default'
+                      )}
+                    >
+                      {/* Add to contacts */}
+                      {t('page.sendNFT.tipAddToContacts')}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+            <div
+              className={clsx('section', {
+                'mb-40': !showWhitelistAlert,
+              })}
+            >
+              <div className="nft-info flex">
+                <NFTAvatar
+                  type={nftItem.content_type}
+                  content={nftItem.content}
+                  className="w-[72px] h-[72px]"
+                />
+                <div className="nft-info__detail">
+                  <h3>{nftItem.name}</h3>
+                  <p>
+                    <span className="field-name">
+                      {t('page.sendNFT.nftInfoFieldLabel.Collection')}
+                    </span>
+                    <span className="value">
+                      {nftItem.collection?.name || '-'}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="field-name">
+                      {t('page.sendNFT.nftInfoFieldLabel.Contract')}
+                    </span>
+                    <span className="value gap-[4px]">
+                      <AddressViewer
+                        address={nftItem.contract_id}
+                        showArrow={false}
+                      />
+                      <ThemeIcon
+                        src={RcIconExternal}
+                        className="icon icon-copy text-r-neutral-foot"
+                        onClick={handleClickContractId}
+                      />
+                      <Copy
+                        data={nftItem.contract_id}
+                        variant="address"
+                        className="text-r-neutral-foot w-14 h-14"
+                      />
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <div className="section-footer">
+                <span>{t('page.sendNFT.nftInfoFieldLabel.sendAmount')}</span>
 
-          {tokenValidationStatus === TOKEN_VALIDATION_STATUS.SUCCESS &&
-            showWhitelistAlert && (
+                <Form.Item name="amount">
+                  <NumberInput
+                    max={nftItem.amount}
+                    nftItem={nftItem}
+                    disabled={!nftItem.is_erc1155}
+                    ref={amountInputEl}
+                  />
+                </Form.Item>
+              </div>
+            </div>
+          </div>
+
+          <div className="footer">
+            {showWhitelistAlert && (
               <div
                 className={clsx(
                   'whitelist-alert',
@@ -556,15 +596,15 @@ const SendNFT = () => {
                     ? 'granted'
                     : 'cursor-pointer'
                 )}
-                onClick={handleClickWhitelistAlert}
+                onClick={handleClickAllowTransferTo}
               >
                 <p className="whitelist-alert__content text-center">
                   {whitelistEnabled && (
-                    <img
+                    <ThemeIcon
                       src={
                         whitelistAlertContent.success
-                          ? IconCheck
-                          : IconTemporaryGrantCheckbox
+                          ? RcIconCheck
+                          : RcIconTemporaryGrantCheckbox
                       }
                       className="icon icon-check inline-block relative -top-1"
                     />
@@ -573,17 +613,17 @@ const SendNFT = () => {
                 </p>
               </div>
             )}
-
-          <div className="footer flex justify-center">
-            <Button
-              disabled={!canSubmit}
-              type="primary"
-              htmlType="submit"
-              size="large"
-              className="w-[200px]"
-            >
-              {t('Send')}
-            </Button>
+            <div className="btn-wrapper w-[100%] px-[20px] flex justify-center">
+              <Button
+                disabled={!canSubmit}
+                type="primary"
+                htmlType="submit"
+                size="large"
+                className="w-[100%] h-[48px]"
+              >
+                {t('page.sendNFT.sendButton')}
+              </Button>
+            </div>
           </div>
         </Form>
       )}

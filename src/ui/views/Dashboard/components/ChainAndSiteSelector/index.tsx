@@ -1,31 +1,60 @@
-import { Badge, message, Skeleton, Tooltip } from 'antd';
-import { GasLevel } from 'background/service/openapi';
+import { Badge, Tooltip } from 'antd';
 import { ConnectedSite } from 'background/service/permission';
 import clsx from 'clsx';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useHistory, useLocation } from 'react-router-dom';
 import { matomoRequestEvent } from '@/utils/matomo-request';
 import IconAlertRed from 'ui/assets/alert-red.svg';
-import IconDapps from 'ui/assets/dapps.svg';
-import IconGas from 'ui/assets/dashboard/gas.svg';
-import IconQuene from 'ui/assets/dashboard/quene.svg';
-import IconSecurity from 'ui/assets/dashboard/security.svg';
-import IconSendToken from 'ui/assets/dashboard/sendtoken.png';
-import IconSetting from 'ui/assets/dashboard/setting.png';
-import IconSwap from 'ui/assets/dashboard/swap.svg';
-import IconReceive from 'ui/assets/dashboard/receive.svg';
-import IconGasTopUp from 'ui/assets/dashboard/gas-top-up.svg';
-import IconTransactions from 'ui/assets/dashboard/transactions.png';
-import IconAddresses from 'ui/assets/dashboard/addresses.svg';
+import IconQuene, {
+  ReactComponent as RcIconQuene,
+} from 'ui/assets/dashboard/quene.svg';
+import IconSecurity, {
+  ReactComponent as RcIconSecurity,
+} from 'ui/assets/dashboard/security.svg';
+import IconSendToken, {
+  ReactComponent as RcIconSendToken,
+} from 'ui/assets/dashboard/sendtoken.svg';
+import IconSwap, {
+  ReactComponent as RcIconSwap,
+} from 'ui/assets/dashboard/swap.svg';
+import IconReceive, {
+  ReactComponent as RcIconReceive,
+} from 'ui/assets/dashboard/receive.svg';
+import { ReactComponent as RcIconBridge } from 'ui/assets/dashboard/bridge.svg';
+
+import IconNFT, {
+  ReactComponent as RcIconNFT,
+} from 'ui/assets/dashboard/nft.svg';
+import IconTransactions, {
+  ReactComponent as RcIconTransactions,
+} from 'ui/assets/dashboard/transactions.svg';
+import IconAddresses, {
+  ReactComponent as RcIconAddresses,
+} from 'ui/assets/dashboard/addresses.svg';
+import { ReactComponent as RcIconEco } from 'ui/assets/dashboard/icon-eco.svg';
+
+import IconMoreSettings, {
+  ReactComponent as RcIconMoreSettings,
+} from 'ui/assets/dashboard/more-settings.svg';
 import IconDrawer from 'ui/assets/drawer.png';
-import { getCurrentConnectSite, splitNumberByStep, useWallet } from 'ui/utils';
+import {
+  getCurrentConnectSite,
+  openInternalPageInTab,
+  useWallet,
+} from 'ui/utils';
 import { CurrentConnection } from '../CurrentConnection';
 import ChainSelectorModal from 'ui/component/ChainSelector/Modal';
-import { RecentConnections, Settings } from '../index';
+import { Settings } from '../index';
 import './style.less';
-import { CHAINS, CHAINS_ENUM } from '@/constant';
+import { CHAINS_ENUM, ThemeIconType, KEYRING_TYPE } from '@/constant';
 import { useAsync } from 'react-use';
 import { useRabbySelector } from '@/ui/store';
+import { GasPriceBar } from '../GasPriceBar';
+import { ClaimRabbyFreeGasBadgeModal } from '../ClaimRabbyBadgeModal/freeGasBadgeModal';
+import { useTranslation } from 'react-i18next';
+import ThemeIcon from '@/ui/component/ThemeMode/ThemeIcon';
+import { EcologyPopup } from '../EcologyPopup';
+import { appIsDev } from '@/utils/env';
 
 export default ({
   gnosisPendingCount,
@@ -47,12 +76,16 @@ export default ({
   gnosisPendingCount?: number;
   setDashboardReload(): void;
 }) => {
+  const { t } = useTranslation();
   const history = useHistory();
   const [currentConnectedSiteChain, setCurrentConnectedSiteChain] = useState(
     CHAINS_ENUM.ETH
   );
   const [drawerAnimation, setDrawerAnimation] = useState<string | null>(null);
-  const [urlVisible, setUrlVisible] = useState(false);
+  const [badgeModalVisible, setBadgeModalVisible] = useState(false);
+
+  const [rabbyPointsVisible, setRabbyPointVisible] = useState(false);
+
   const [settingVisible, setSettingVisible] = useState(false);
   const [currentConnect, setCurrentConnect] = useState<
     ConnectedSite | null | undefined
@@ -65,6 +98,9 @@ export default ({
   const [isShowReceiveModal, setIsShowReceiveModal] = useState(
     trigger === 'receive' && showChainsModal
   );
+
+  const [isShowEcology, setIsShowEcologyModal] = useState(false);
+
   const wallet = useWallet();
 
   const account = useRabbySelector((state) => state.account.currentAccount);
@@ -72,11 +108,24 @@ export default ({
   const [approvalRiskAlert, setApprovalRiskAlert] = useState(0);
 
   const { value: approvalState } = useAsync(async () => {
-    if (account?.address) {
+    if (
+      account?.address &&
+      (account.type !== KEYRING_TYPE.WatchAddressKeyring || appIsDev)
+    ) {
       const data = await wallet.openapi.approvalStatus(account.address);
       return data;
     }
     return;
+  }, [account?.address]);
+
+  const { value: claimable } = useAsync(async () => {
+    if (account?.address) {
+      const data = await wallet.openapi.checkClaimInfoV2({
+        id: account?.address,
+      });
+      return !!data?.claimable_points && data?.claimable_points > 0;
+    }
+    return false;
   }, [account?.address]);
 
   useEffect(() => {
@@ -98,73 +147,7 @@ export default ({
     setCurrentConnect(current);
   }, []);
 
-  const currentConnectedSiteChainNativeToken = useMemo(
-    () =>
-      currentConnectedSiteChain
-        ? CHAINS?.[currentConnectedSiteChain]?.nativeTokenAddress || 'eth'
-        : 'eth',
-    [currentConnectedSiteChain]
-  );
-
-  const {
-    value: gasPrice = 0,
-    loading: gasPriceLoading,
-  } = useAsync(async () => {
-    try {
-      const marketGas: GasLevel[] = await wallet.openapi.gasMarket(
-        currentConnectedSiteChainNativeToken
-      );
-      const selectedGasPice = marketGas.find((item) => item.level === 'slow')
-        ?.price;
-      if (selectedGasPice) {
-        return Number(selectedGasPice / 1e9);
-      }
-    } catch (e) {
-      // DO NOTHING
-    }
-  }, [currentConnectedSiteChainNativeToken]);
-
-  const { value: tokenLogo, loading: tokenLoading } = useAsync(async () => {
-    try {
-      const data = await wallet.openapi.getToken(
-        account!.address,
-        CHAINS[currentConnectedSiteChain].serverId,
-        CHAINS[currentConnectedSiteChain].nativeTokenAddress
-      );
-      return (
-        data?.logo_url || CHAINS[currentConnectedSiteChain].nativeTokenLogo
-      );
-    } catch (error) {
-      return CHAINS[currentConnectedSiteChain].nativeTokenLogo;
-    }
-  }, [currentConnectedSiteChain]);
-
-  const {
-    value: tokenPrice,
-    loading: currentPriceLoading,
-  } = useAsync(async () => {
-    try {
-      const {
-        change_percent = 0,
-        last_price = 0,
-      } = await wallet.openapi.tokenPrice(currentConnectedSiteChainNativeToken);
-
-      return { currentPrice: last_price, percentage: change_percent };
-    } catch (e) {
-      return {
-        currentPrice: null,
-        percentage: null,
-      };
-    }
-  }, [currentConnectedSiteChainNativeToken]);
-
-  const { currentPrice = null, percentage = null } = tokenPrice || {};
-
-  const changeURL = () => {
-    setUrlVisible(!urlVisible);
-  };
-
-  const changeSetting = () => {
+  const toggleShowMoreSettings = () => {
     setSettingVisible(!settingVisible);
     setDashboardReload();
   };
@@ -196,89 +179,109 @@ export default ({
   }, [showDrawer]);
 
   type IPanelItem = {
-    icon: string;
+    icon: ThemeIconType;
     content: string;
     onClick: import('react').MouseEventHandler<HTMLElement>;
     badge?: number;
     badgeAlert?: boolean;
+    badgeClassName?: string;
     iconSpin?: boolean;
     hideForGnosis?: boolean;
     showAlert?: boolean;
     disabled?: boolean;
     commingSoonBadge?: boolean;
     disableReason?: string;
+    eventKey: string;
   };
 
-  const panelItems: Record<string, IPanelItem> = {
+  const panelItems = {
     swap: {
-      icon: IconSwap,
-      content: 'Swap',
+      icon: RcIconSwap,
+      eventKey: 'Swap',
+      content: t('page.dashboard.home.panel.swap'),
       onClick: () => {
         history.push('/dex-swap?rbisource=dashboard');
       },
-    },
+    } as IPanelItem,
     send: {
-      icon: IconSendToken,
-      content: 'Send',
+      icon: RcIconSendToken,
+      eventKey: 'Send',
+      content: t('page.dashboard.home.panel.send'),
       onClick: () => history.push('/send-token?rbisource=dashboard'),
-    },
+    } as IPanelItem,
+    bridge: {
+      icon: RcIconBridge,
+      eventKey: 'Bridge',
+      content: t('page.dashboard.home.panel.bridge'),
+      onClick: () => {
+        history.push('/bridge');
+      },
+    } as IPanelItem,
     receive: {
-      icon: IconReceive,
-      content: 'Receive',
+      icon: RcIconReceive,
+      eventKey: 'Receive',
+      content: t('page.dashboard.home.panel.receive'),
       onClick: () => {
         setIsShowReceiveModal(true);
       },
-    },
-    gasTopUp: {
-      icon: IconGasTopUp,
-      content: 'Gas Top Up',
-      onClick: () => {
-        history.push('/gas-top-up');
-      },
-    },
+    } as IPanelItem,
     queue: {
-      icon: IconQuene,
-      content: 'Queue',
+      icon: RcIconQuene,
+      eventKey: 'Queue',
+      content: t('page.dashboard.home.panel.queue'),
       badge: gnosisPendingCount,
       onClick: () => {
         history.push('/gnosis-queue');
       },
-    },
+    } as IPanelItem,
     transactions: {
-      icon: IconTransactions,
-      content: 'Transactions',
+      icon: RcIconTransactions,
+      eventKey: 'Transactions',
+      content: t('page.dashboard.home.panel.transactions'),
       onClick: () => {
         history.push('/history');
       },
-    },
-    dapps: {
-      icon: IconDapps,
-      content: 'Connected',
-      onClick: () => {
-        changeURL();
-      },
-    },
+    } as IPanelItem,
     security: {
-      icon: IconSecurity,
-      content: 'Approvals',
-      onClick: () => {
-        history.push('/approval-manage');
+      icon: RcIconSecurity,
+      eventKey: 'Approvals',
+      content: t('page.dashboard.home.panel.approvals'),
+      onClick: async (evt) => {
+        openInternalPageInTab('approval-manage');
       },
       badge: approvalRiskAlert,
       badgeAlert: approvalRiskAlert > 0,
-    },
-    settings: {
-      icon: IconSetting,
-      content: 'Settings',
-      onClick: changeSetting,
-    },
+    } as IPanelItem,
+    more: {
+      icon: RcIconMoreSettings,
+      eventKey: 'More',
+      content: t('page.dashboard.home.panel.more'),
+      onClick: toggleShowMoreSettings,
+    } as IPanelItem,
     address: {
-      icon: IconAddresses,
-      content: 'Addresses',
+      icon: RcIconAddresses,
+      eventKey: 'Manage Address',
+      content: t('page.dashboard.home.panel.manageAddress'),
       onClick: () => {
         history.push('/settings/address');
       },
-    },
+    } as IPanelItem,
+    nft: {
+      icon: RcIconNFT,
+      eventKey: 'NFT',
+      content: t('page.dashboard.home.panel.nft'),
+      onClick: () => {
+        history.push('/nft');
+      },
+    } as IPanelItem,
+    ecology: {
+      icon: RcIconEco,
+      eventKey: 'Ecology',
+      content: t('page.dashboard.home.panel.ecology'),
+      onClick: () => {
+        setIsShowEcologyModal(true);
+      },
+    } as IPanelItem,
   };
 
   let pickedPanelKeys: (keyof typeof panelItems)[] = [];
@@ -288,25 +291,24 @@ export default ({
       'swap',
       'send',
       'receive',
-      'gasTopUp',
-      // 'queue',
+      'bridge',
       'transactions',
-      'dapps',
+      'nft',
       'security',
-      'address',
-      'settings',
+      'ecology',
+      'more',
     ];
   } else {
     pickedPanelKeys = [
       'swap',
       'send',
       'receive',
-      'gasTopUp',
+      'bridge',
       'transactions',
-      'dapps',
+      'nft',
       'security',
-      'address',
-      'settings',
+      'ecology',
+      'more',
     ];
   }
 
@@ -329,12 +331,14 @@ export default ({
             return item.disabled ? (
               <Tooltip
                 {...(item.commingSoonBadge && { visible: false })}
-                title={item.disableReason || 'Coming soon'}
+                title={
+                  item.disableReason || t('page.dashboard.home.comingSoon')
+                }
                 overlayClassName="rectangle direction-tooltip"
                 autoAdjustOverflow={false}
               >
                 <div key={index} className="disable-direction">
-                  <img src={item.icon} className="images" />
+                  <ThemeIcon src={item.icon} className="images" />
                   <div>{item.content} </div>
                 </div>
               </Tooltip>
@@ -345,22 +349,27 @@ export default ({
                   matomoRequestEvent({
                     category: 'Dashboard',
                     action: 'clickEntry',
-                    label: item.content,
+                    label: item.eventKey,
                   });
                   item?.onClick(evt);
                 }}
                 className="direction pointer"
               >
                 {item.showAlert && (
-                  <img src={IconAlertRed} className="icon icon-alert" />
+                  <ThemeIcon src={IconAlertRed} className="icon icon-alert" />
                 )}
                 {item.badge ? (
                   <Badge
                     count={item.badge}
                     size="small"
-                    className={item.badgeAlert ? 'alert' : ''}
+                    className={clsx(
+                      {
+                        alert: item.badgeAlert && !item.badgeClassName,
+                      },
+                      item.badgeClassName
+                    )}
                   >
-                    <img
+                    <ThemeIcon
                       src={item.icon}
                       className={[item.iconSpin && 'icon-spin', 'images']
                         .filter(Boolean)
@@ -368,71 +377,37 @@ export default ({
                     />
                   </Badge>
                 ) : (
-                  <img src={item.icon} className="images" />
+                  <ThemeIcon src={item.icon} className="images" />
                 )}
                 <div>{item.content} </div>
                 {item.commingSoonBadge && (
-                  <div className="coming-soon-badge">Soon</div>
+                  <div className="coming-soon-badge">
+                    {t('page.dashboard.home.soon')}
+                  </div>
                 )}
               </div>
             );
           })}
         </div>
-        <div className="price-viewer">
-          <div className="eth-price">
-            {tokenLoading ? (
-              <Skeleton.Avatar size={20} active shape="circle" />
-            ) : (
-              <img src={tokenLogo} className="w-[20px] h-[20px] rounded-full" />
-            )}
-            {currentPriceLoading ? (
-              <Skeleton.Button active={true} />
-            ) : (
-              <>
-                <div className="gasprice">
-                  {currentPrice !== null
-                    ? currentPrice < 0.01
-                      ? '<$0.01'
-                      : `$${splitNumberByStep(currentPrice.toFixed(2))}`
-                    : '-'}
-                </div>
-                {percentage !== null && (
-                  <div
-                    className={
-                      percentage > 0
-                        ? 'positive'
-                        : percentage === 0
-                        ? 'even'
-                        : 'depositive'
-                    }
-                  >
-                    {percentage >= 0 && '+'}
-                    {percentage?.toFixed(2)}%
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-          <div className="gas-container">
-            <img src={IconGas} className="w-[16px] h-[16px]" />
-            {gasPriceLoading ? (
-              <Skeleton.Button active={true} />
-            ) : (
-              <>
-                <div className="gasprice">{`${splitNumberByStep(
-                  gasPrice
-                )}`}</div>
-                <div className="gwei">Gwei</div>
-              </>
-            )}
-          </div>
-        </div>
       </div>
-      <CurrentConnection onChainChange={setCurrentConnectedSiteChain} />
+      <GasPriceBar currentConnectedSiteChain={currentConnectedSiteChain} />
+
+      <CurrentConnection
+        onChainChange={(chain) => {
+          setCurrentConnectedSiteChain(chain);
+          if (currentConnect) {
+            onChange({
+              ...currentConnect,
+              chain,
+            });
+          }
+        }}
+      />
       <ChainSelectorModal
         className="receive-chain-select-modal"
         value={CHAINS_ENUM.ETH}
         visible={isShowReceiveModal}
+        showRPCStatus
         onChange={(chain) => {
           history.push(`/receive?rbisource=dashboard&chain=${chain}`);
           setIsShowReceiveModal(false);
@@ -441,8 +416,26 @@ export default ({
           setIsShowReceiveModal(false);
         }}
       />
-      <Settings visible={settingVisible} onClose={changeSetting} />
-      <RecentConnections visible={urlVisible} onClose={changeURL} />
+
+      <Settings
+        visible={settingVisible}
+        onClose={toggleShowMoreSettings}
+        onOpenBadgeModal={() => {
+          setBadgeModalVisible(true);
+          setSettingVisible(false);
+        }}
+      />
+      <ClaimRabbyFreeGasBadgeModal
+        visible={badgeModalVisible}
+        onCancel={() => {
+          setBadgeModalVisible(false);
+        }}
+      />
+
+      <EcologyPopup
+        visible={isShowEcology}
+        onClose={() => setIsShowEcologyModal(false)}
+      />
     </div>
   );
 };

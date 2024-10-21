@@ -1,10 +1,12 @@
 import React from 'react';
 import styled from 'styled-components';
 import { useHistory } from 'react-router-dom';
+import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 
 const Wrapper = styled.div`
   position: absolute;
-  top: 86px;
+  top: 70px;
   right: 20px;
   min-width: 62px;
   height: 27px;
@@ -30,10 +32,27 @@ const Queue = ({ count, className }: QueueProps) => {
   const handleClickPendingTxs = () => {
     history.push('/gnosis-queue');
   };
+  const { t } = useTranslation();
 
   return (
-    <Wrapper onClick={handleClickPendingTxs} className={className}>
-      {count ? `${count} in Queue` : 'Queue'}
+    <Wrapper
+      onClick={handleClickPendingTxs}
+      className={clsx(
+        className,
+        'ease-in-out',
+        'group max-w-[62px] hover:max-w-[200px]',
+        'whitespace-nowrap overflow-hidden overflow-ellipsis',
+        'flex justify-end'
+      )}
+    >
+      <div className="group-hover:block hidden">
+        {count ? (
+          <span className="mr-4">
+            {t('page.dashboard.home.queue.count', { count })}
+          </span>
+        ) : null}
+      </div>
+      <div>{t('page.dashboard.home.queue.title')}</div>
     </Wrapper>
   );
 };

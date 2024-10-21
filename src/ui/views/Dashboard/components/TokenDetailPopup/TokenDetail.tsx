@@ -1,25 +1,35 @@
 import { useInfiniteScroll } from 'ahooks';
-import { Button, message, Tooltip } from 'antd';
+import { Button } from 'antd';
 import { TokenItem, TxHistoryResult } from 'background/service/openapi';
-import ClipboardJS from 'clipboard';
 import clsx from 'clsx';
 import { last } from 'lodash';
 import React, { useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHistory } from 'react-router-dom';
-import IconCopy from 'ui/assets/swap/copy.svg';
-import IconPlus from 'ui/assets/plus.svg';
-import IconSuccess from 'ui/assets/success.svg';
-import IconTrash from 'ui/assets/trash.svg';
-import { Modal, TokenWithChain } from 'ui/component';
-import { splitNumberByStep, useWallet } from 'ui/utils';
-import { getChain } from 'utils';
+import { ReactComponent as RcIconExternal } from 'ui/assets/icon-share-currentcolor.svg';
+import { Copy, TokenWithChain } from 'ui/component';
+import {
+  splitNumberByStep,
+  useWallet,
+  openInTab,
+  useCommonPopupView,
+  getUITypeName,
+} from 'ui/utils';
+import { getAddressScanLink, getChain } from '@/utils';
 import ChainIcon from '../NFT/ChainIcon';
 import { HistoryItem } from './HistoryItem';
 import { Loading } from './Loading';
 import './style.less';
+import { CHAINS } from 'consts';
+import { ellipsisOverflowedText } from 'ui/utils';
+import { getTokenSymbol } from '@/ui/utils/token';
+import { SWAP_SUPPORT_CHAINS } from '@/constant';
+import { CustomizedSwitch } from './CustomizedButton';
+import { BlockedButton } from './BlockedButton';
 import { useRabbySelector } from '@/ui/store';
-import { DEX_SUPPORT_CHAINS } from '@rabby-wallet/rabby-swap';
+import { TooltipWithMagnetArrow } from '@/ui/component/Tooltip/TooltipWithMagnetArrow';
+import ThemeIcon from '@/ui/component/ThemeMode/ThemeIcon';
+import { findChain } from '@/utils/chain';
 
 const PAGE_COUNT = 10;
 const ellipsis = (text: string) => {
@@ -32,6 +42,9 @@ interface TokenDetailProps {
   addToken(token: TokenItem): void;
   removeToken(token: TokenItem): void;
   variant?: 'add';
+  isAdded?: boolean;
+  canClickToken?: boolean;
+  hideOperationButtons?: boolean;
 }
 
 const TokenDetail = ({
@@ -39,32 +52,49 @@ const TokenDetail = ({
   addToken,
   removeToken,
   variant,
+  isAdded,
+  onClose,
+  canClickToken = true,
+  hideOperationButtons = false,
 }: TokenDetailProps) => {
   const wallet = useWallet();
   const { t } = useTranslation();
-
-  const oDexId = useRabbySelector((state) => state.swap.selectedDex);
-
-  const shouldSelectDex = useMemo(() => !oDexId, [oDexId]);
-
-  const supportChains = useMemo(
-    () => (oDexId ? DEX_SUPPORT_CHAINS[oDexId] || [] : []),
-    [oDexId]
+  const { currentAccount } = useRabbySelector((s) => s.account);
+  const [tokenWithAmount, setTokenWithAmount] = React.useState<TokenItem>(
+    token
   );
 
   const tokenSupportSwap = useMemo(() => {
-    if (shouldSelectDex || !token.is_core) return false;
     const tokenChain = getChain(token?.chain)?.enum;
-    return !!tokenChain && supportChains.includes(tokenChain);
-  }, [supportChains, token, shouldSelectDex]);
+    return !!tokenChain && SWAP_SUPPORT_CHAINS.includes(tokenChain as any);
+  }, [token]);
 
   const ref = useRef<HTMLDivElement | null>(null);
 
-  const fetchData = async (startTime = 0) => {
-    const { address } = (await wallet.syncGetCurrentAccount())!;
+  const getTokenAmount = React.useCallback(async () => {
+    if (token.amount !== undefined) return;
+    const info = await wallet.openapi.getToken(
+      currentAccount!.address,
+      token.chain,
+      token.id
+    );
+    if (info) {
+      setTokenWithAmount({
+        ...token,
+        amount: info.amount,
+      });
+    }
+  }, [token]);
 
+  React.useEffect(() => {
+    if (currentAccount) {
+      getTokenAmount();
+    }
+  }, [currentAccount, getTokenAmount]);
+
+  const fetchData = async (startTime = 0) => {
     const res: TxHistoryResult = await wallet.openapi.listTxHisotry({
-      id: address,
+      id: currentAccount!.address,
       chain_id: token.chain,
       start_time: startTime,
       page_count: PAGE_COUNT,
@@ -95,70 +125,34 @@ const TokenDetail = ({
     }
   );
 
-  const handleCopy = (text) => {
-    const clipboard = new ClipboardJS('.token-detail', {
-      text: function () {
-        return text;
-      },
+  const handleClickLink = (token: TokenItem) => {
+    const serverId = token.chain;
+    const chain = findChain({
+      serverId: serverId,
     });
-
-    clipboard.on('success', () => {
-      message.success({
-        duration: 3,
-        icon: <i />,
-        content: (
-          <div>
-            <div className="flex gap-4 mb-4">
-              <img src={IconSuccess} alt="" />
-              Copied
-            </div>
-            <div className="text-white">{text}</div>
-          </div>
-        ),
-      });
-      clipboard.destroy();
-    });
-  };
-
-  const handleRemove = async (token: TokenItem) => {
-    const { destroy } = Modal.info({
-      closable: true,
-      className: 'token-detail-remove-modal',
-      width: 320,
-      content: (
-        <div>
-          <div className="mb-[16px]">
-            This will only stop the token from being visible in Rabby and will
-            not affect its balance
-          </div>
-          <Button
-            type="primary"
-            size="large"
-            className="w-[170px]"
-            onClick={async () => {
-              await removeToken(token);
-              destroy();
-            }}
-          >
-            Remove
-          </Button>
-        </div>
-      ),
-    });
+    if (!chain) return;
+    const link = getAddressScanLink(chain.scanLink, token.id);
+    const needClose = getUITypeName() !== 'notification';
+    openInTab(link, needClose);
   };
 
   const isEmpty = (data?.list?.length || 0) <= 0 && !loading;
 
   const isShowAddress = /^0x.{40}$/.test(token.id);
+  const { setVisible } = useCommonPopupView();
 
   const history = useHistory();
   const goToSend = useCallback(() => {
+    setVisible(false);
+    onClose?.();
     history.push(
       `/send-token?rbisource=tokendetail&token=${token?.chain}:${token?.id}`
     );
   }, [history, token]);
 
   const goToReceive = useCallback(() => {
+    setVisible(false);
+    onClose?.();
     history.push(
       `/receive?rbisource=tokendetail&chain=${
         getChain(token?.chain)?.enum
@@ -167,10 +161,16 @@ const TokenDetail = ({
   }, [history, token]);
 
   const goToSwap = useCallback(() => {
+    setVisible(false);
+    onClose?.();
     history.push(
       `/dex-swap?rbisource=tokendetail&chain=${token?.chain}&payTokenId=${token?.id}`
     );
   }, [history, token]);
+
+  const isHiddenButton =
+    // Customized and not added
+    variant === 'add' && !token.is_core && !isAdded;
 
   return (
     <div className="token-detail" ref={ref}>
@@ -183,139 +183,128 @@ const TokenDetail = ({
               width="24px"
               height="24px"
             ></TokenWithChain>
-            <div className="token-symbol ml-8">{token.symbol}</div>
+            <div className="token-symbol ml-8" title={getTokenSymbol(token)}>
+              {ellipsisOverflowedText(getTokenSymbol(token), 8)}
+            </div>
           </div>
           <div className="address">
             <ChainIcon chain={token.chain}></ChainIcon>
             {isShowAddress ? (
               <>
                 {ellipsis(token.id)}
-                <img
-                  src={IconCopy}
+                <ThemeIcon
+                  src={RcIconExternal}
                   className="w-14 cursor-pointer"
-                  alt=""
                   onClick={() => {
-                    handleCopy(token.id);
+                    handleClickLink(token);
                   }}
+                />
+                <Copy
+                  data={token.id}
+                  variant="address"
+                  className="w-14 cursor-pointer"
                 />
               </>
             ) : (
-              token?.name
+              getChain(token?.chain)?.name
             )}
           </div>
-          {!token.is_core && variant !== 'add' ? (
-            <div
-              className="remove"
-              onClick={() => {
-                handleRemove(token);
-              }}
-            >
-              <img src={IconTrash} alt="" />
-            </div>
-          ) : null}
-        </div>
-        <div className="balance">
-          <div className="balance-title">{token?.name} balance</div>
-          <div className="balance-content overflow-hidden">
-            <div
-              className="balance-value truncate"
-              title={splitNumberByStep((token.amount || 0)?.toFixed(4))}
-            >
-              {splitNumberByStep((token.amount || 0)?.toFixed(4))}
-            </div>
-            <div
-              className="balance-value-usd truncate"
-              title={splitNumberByStep(
-                (token.amount * token.price || 0)?.toFixed(2)
-              )}
-            >
-              ≈ $
-              {splitNumberByStep((token.amount * token.price || 0)?.toFixed(2))}
-            </div>
-          </div>
-        </div>
-        {variant === 'add' && (
-          <>
-            {token.is_core ? (
-              <div className={clsx('alert', 'mb-[24px]')}>
-                This token is supported by default. It will show up in your
-                wallet as long as balance &gt; 0.
-              </div>
-            ) : (
-              <div className={clsx('alert alert-primary', 'mb-[24px]')}>
-                This token is not verified. Please do your <br />
-                own research before you add it.
-                {token.amount > 0 ? (
-                  <div
-                    className="alert-primary-btn"
-                    onClick={() => {
-                      addToken(token);
-                    }}
-                  >
-                    <img src={IconPlus} alt="" />
-                  </div>
-                ) : (
-                  <Tooltip
-                    title="Cannot add a token with 0 balance"
-                    placement="bottomLeft"
-                    overlayClassName={clsx('rectangle')}
-                  >
-                    <div className="alert-primary-btn opacity-20 cursor-not-allowed">
-                      <img src={IconPlus} alt="" />
-                    </div>
-                  </Tooltip>
-                )}
-              </div>
-            )}
-          </>
-        )}
-
-        <div className="flex flex-row justify-between mt-24">
-          <Tooltip
-            overlayClassName="rectangle token_swap__tooltip"
-            placement="topLeft"
-            title={
-              shouldSelectDex
-                ? 'Please select the dex in swap first'
-                : t('The token on this chain is not supported on current dex')
-            }
-            visible={tokenSupportSwap ? false : undefined}
-          >
-            <Button
-              type="primary"
-              size="large"
-              onClick={goToSwap}
-              disabled={!tokenSupportSwap}
-              style={{
-                width: 114,
-              }}
-            >
-              Swap
-            </Button>
-          </Tooltip>
-
-          <Button
-            type="primary"
-            ghost
-            size="large"
-            className="w-[114px] rabby-btn-ghost"
-            onClick={goToSend}
-          >
-            {t('Send')}
-          </Button>
-          <Button
-            type="primary"
-            ghost
-            size="large"
-            className="w-[114px] rabby-btn-ghost"
-            onClick={goToReceive}
-          >
-            {t('Receive')}
-          </Button>
         </div>
       </div>
 
       <div className={clsx('token-detail-body token-txs-history', 'pt-[0px]')}>
+        <div className="token-detail-stickyarea">
+          {variant === 'add' ? (
+            token.is_core ? (
+              <BlockedButton
+                selected={isAdded}
+                onOpen={() => addToken(tokenWithAmount)}
+                onClose={() => removeToken(tokenWithAmount)}
+              />
+            ) : (
+              <CustomizedSwitch
+                selected={isAdded}
+                onOpen={() => addToken(tokenWithAmount)}
+                onClose={() => removeToken(tokenWithAmount)}
+              />
+            )
+          ) : null}
+          <div className="balance">
+            <div className="balance-title">
+              {getTokenSymbol(token)} {t('page.newAddress.hd.balance')}
+            </div>
+            <div className="balance-content overflow-hidden">
+              <TooltipWithMagnetArrow
+                className="rectangle w-[max-content]"
+                title={(tokenWithAmount.amount || 0).toString()}
+                placement="bottom"
+              >
+                <div className="balance-value truncate">
+                  {splitNumberByStep((tokenWithAmount.amount || 0)?.toFixed(8))}
+                </div>
+              </TooltipWithMagnetArrow>
+              <TooltipWithMagnetArrow
+                title={`≈ $${(
+                  tokenWithAmount.amount * token.price || 0
+                ).toString()}`}
+                className="rectangle w-[max-content]"
+                placement="bottom"
+              >
+                <div className="balance-value-usd truncate">
+                  ≈ $
+                  {splitNumberByStep(
+                    (tokenWithAmount.amount * token.price || 0)?.toFixed(2)
+                  )}
+                </div>
+              </TooltipWithMagnetArrow>
+            </div>
+          </div>
+        </div>
+        {!isHiddenButton && !hideOperationButtons && (
+          <div className="flex flex-row justify-between J_buttons_area relative">
+            <TooltipWithMagnetArrow
+              overlayClassName="rectangle w-[max-content]"
+              placement="top"
+              arrowPointAtCenter
+              title={t('page.dashboard.tokenDetail.notSupported')}
+              visible={tokenSupportSwap ? false : undefined}
+            >
+              <Button
+                type="primary"
+                size="large"
+                onClick={goToSwap}
+                disabled={!tokenSupportSwap}
+                className="w-[114px] h-[36px] leading-[16px]"
+                style={{
+                  width: 114,
+                  height: 36,
+                  lineHeight: '16px',
+                }}
+              >
+                {t('page.dashboard.tokenDetail.swap')}
+              </Button>
+            </TooltipWithMagnetArrow>
+
+            <Button
+              type="primary"
+              ghost
+              size="large"
+              className="w-[114px] h-[36px] leading-[16px] rabby-btn-ghost"
+              onClick={goToSend}
+            >
+              {t('page.dashboard.tokenDetail.send')}
+            </Button>
+            <Button
+              type="primary"
+              ghost
+              size="large"
+              className="w-[114px] h-[36px] leading-[16px] rabby-btn-ghost"
+              onClick={goToReceive}
+            >
+              {t('page.dashboard.tokenDetail.receive')}
+            </Button>
+          </div>
+        )}
         {data?.list.map((item) => (
           <HistoryItem
             data={item}
@@ -323,14 +312,16 @@ const TokenDetail = ({
             cateDict={item.cateDict}
             tokenDict={item.tokenDict}
             key={item.id}
+            onClose={onClose}
+            canClickToken={canClickToken}
           ></HistoryItem>
         ))}
         {(loadingMore || loading) && <Loading count={5} active />}
         {isEmpty && (
-          <div className="token-txs-history__empty">
+          <div className="token-txs-history__empty mt-60">
             <img className="no-data" src="./images/nodata-tx.png" />
             <p className="text-14 text-gray-content mt-12">
-              {t('No Transactions')}
+              {t('page.dashboard.tokenDetail.noTransactions')}
             </p>
           </div>
         )}

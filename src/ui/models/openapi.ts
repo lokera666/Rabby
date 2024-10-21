@@ -3,6 +3,7 @@ import { RootModel } from '.';
 
 interface OpenAPIState {
   host: string;
+  testnetHost: string;
 }
 
 export const openapi = createModel<RootModel>()({
@@ -10,6 +11,7 @@ export const openapi = createModel<RootModel>()({
 
   state: {
     host: '',
+    testnetHost: '',
   } as OpenAPIState,
 
   reducers: {
@@ -25,12 +27,22 @@ export const openapi = createModel<RootModel>()({
   },
 
   effects: (dispatch) => ({
-    async getHost(_?, store?) {
+    async getHost(_: void, store) {
       const host = await store.app.wallet.openapi.getHost();
       this.setField({ host });
     },
     async setHost(host: string, store) {
       await store.app.wallet.openapi.setHost(host);
+      this.getHost();
+    },
+    async getTestnetHost(_: void, store) {
+      const testnetHost = await store.app.wallet.testnetOpenapi.getHost();
+      this.setField({ testnetHost });
+    },
+    async setTestnetHost(host: string, store) {
+      await store.app.wallet.openapi.setTestnetHost(host);
+      await store.app.wallet.testnetOpenapi.setHost(host);
+      this.setField({ testnetHost: host });
       this.getHost();
     },
   }),

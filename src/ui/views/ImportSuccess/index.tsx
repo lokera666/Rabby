@@ -5,17 +5,22 @@ import { matomoRequestEvent } from '@/utils/matomo-request';
 import { sortBy } from 'lodash';
 import { StrayPageWithButton } from 'ui/component';
 import AddressItem from 'ui/component/AddressList/AddressItem';
-import { getUiType } from 'ui/utils';
+import { getUiType, useApproval } from 'ui/utils';
 import { Account } from 'background/service/preference';
 import clsx from 'clsx';
 import stats from '@/stats';
-import { KEYRING_ICONS, WALLET_BRAND_CONTENT, KEYRING_CLASS } from 'consts';
+import {
+  KEYRING_ICONS,
+  WALLET_BRAND_CONTENT,
+  KEYRING_CLASS,
+  HardwareKeyrings,
+} from 'consts';
 import { IconImportSuccess } from 'ui/assets';
 import SuccessLogo from 'ui/assets/success-logo.svg';
 import './index.less';
 import { useMedia } from 'react-use';
-import Mask from 'ui/assets/import-mask.png';
 import { connectStore, useRabbyDispatch } from '@/ui/store';
+import { Chain } from '@debank/common';
 
 const ImportSuccess = ({ isPopup = false }: { isPopup?: boolean }) => {
   const history = useHistory();
@@ -29,7 +34,9 @@ const ImportSuccess = ({ isPopup = false }: { isPopup?: boolean }) => {
     showImportIcon?: boolean;
     isMnemonics?: boolean;
     importedLength?: number;
+    supportChainList?: Chain[];
   }>();
+
   const dispatch = useRabbyDispatch();
   const addressItems = useRef(new Array(state.accounts.length));
   const { t } = useTranslation();
@@ -37,15 +44,16 @@ const ImportSuccess = ({ isPopup = false }: { isPopup?: boolean }) => {
   const {
     accounts,
     hasDivider = true,
-    title = t('Imported Successfully'),
+    title = t('page.importSuccess.title'),
     editing = false,
     showImportIcon = false,
     isMnemonics = false,
     importedLength = 0,
   } = state;
+  const [, resolveApproval] = useApproval();
 
   const handleNextClick = async (e: React.MouseEvent<HTMLElement>) => {
-    e.stopPropagation();
+    e?.stopPropagation();
     if (!stopEditing) {
       addressItems.current.forEach((item) => item.alianNameConfirm());
     }
@@ -54,6 +62,12 @@ const ImportSuccess = ({ isPopup = false }: { isPopup?: boolean }) => {
 
       return;
     }
+
+    if (getUiType().isNotification) {
+      resolveApproval();
+      return;
+    }
+
     history.push('/dashboard');
   };
   const importedIcon =
@@ -71,7 +85,9 @@ const ImportSuccess = ({ isPopup = false }: { isPopup?: boolean }) => {
   };
 
   useEffect(() => {
-    if (Object.values(KEYRING_CLASS.HARDWARE).includes(accounts[0].type)) {
+    if (
+      Object.values(KEYRING_CLASS.HARDWARE).includes(accounts[0].type as any)
+    ) {
       stats.report('importHardware', {
         type: accounts[0].type,
       });
@@ -92,7 +108,7 @@ const ImportSuccess = ({ isPopup = false }: { isPopup?: boolean }) => {
       custom={isWide}
       className={clsx(isWide && 'rabby-stray-page')}
       hasDivider={hasDivider}
-      NextButtonContent={t('Done')}
+      NextButtonContent={t('global.Done')}
       onNextClick={handleNextClick}
       footerFixed={false}
       noPadding={isPopup}
@@ -100,33 +116,26 @@ const ImportSuccess = ({ isPopup = false }: { isPopup?: boolean }) => {
     >
       {isPopup &&
         (!isWide ? (
-          <header className="create-new-header create-password-header h-[264px]">
+          <header className="create-new-header create-password-header h-[200px] dark:bg-r-blue-disable">
             <img
-              className="rabby-logo"
-              src="/images/logo-white.svg"
-              alt="rabby logo"
-            />
-            <img
-              className="unlock-logo w-[128px] h-[128px] mx-auto"
+              className="w-[60px] h-[60px] mx-auto mb-[20px] mt-[-4px]"
               src={SuccessLogo}
             />
-            <p className="text-24 mb-4 mt-0 text-white text-center font-bold">
-              {title || t('Imported Successfully')}
+            <p className="text-20 mb-4 mt-0 text-white text-center font-bold">
+              {title || t('page.importSuccess.title')}
             </p>
-            <img src="/images/success-mask.png" className="mask" />
           </header>
         ) : (
-          <div className="create-new-header create-password-header h-[220px]">
+          <div className="create-new-header create-password-header h-[200px] dark:bg-r-blue-disable">
             <div className="rabby-container">
               <img
-                className="unlock-logo w-[128px] h-[128px] mx-auto"
+                className="w-[80px] h-[80px] mx-auto mb-[16px] mt-[-4px]"
                 src={SuccessLogo}
               />
               <p className="text-24 mb-4 mt-0 text-white text-center font-bold">
-                {title || t('Imported Successfully')}
+                {title || t('page.importSuccess.title')}
               </p>
             </div>
-            <img src={Mask} className="mask" />
           </div>
         ))}
       <div className={clsx(isPopup && 'rabby-container', 'overflow-auto')}>
@@ -153,7 +162,7 @@ const ImportSuccess = ({ isPopup = false }: { isPopup?: boolean }) => {
               <div className="text-green text-20 mb-2">{title}</div>
               <div className="text-title text-15 mb-12">
                 <Trans
-                  i18nKey="AddressCount"
+                  i18nKey="page.importSuccess.addressCount"
                   values={{ count: accounts?.length }}
                 />
               </div>
@@ -167,7 +176,7 @@ const ImportSuccess = ({ isPopup = false }: { isPopup?: boolean }) => {
           >
             {sortBy(accounts, (item) => item?.index).map((account, index) => (
               <AddressItem
-                className="mb-12 rounded bg-white py-12 pl-16 h-[52px] flex"
+                className="mb-12 rounded bg-r-neutral-card-1 py-12 pl-16 h-[92px] flex"
                 key={account.address}
                 account={account}
                 showAssets
@@ -179,13 +188,34 @@ const ImportSuccess = ({ isPopup = false }: { isPopup?: boolean }) => {
                 importedAccount
                 isMnemonics={isMnemonics}
                 importedLength={importedLength}
-                stopEditing={stopEditing || index !== editIndex}
+                stopEditing={!editing}
                 canEditing={(editing) => startEdit(editing, index)}
+                showEditIcon={false}
+                ellipsis={false}
                 ref={(el) => {
                   addressItems.current[index] = el;
                 }}
               />
             ))}
+            {!!state?.supportChainList?.length && (
+              <div className="chain-list-container">
+                <div className="desc">
+                  {t('page.importSuccess.gnosisChainDesc', {
+                    count: state?.supportChainList?.length || 0,
+                  })}
+                </div>
+                <div className="chain-list">
+                  {state?.supportChainList?.map((chain) => {
+                    return (
+                      <div className="chain-list-item" key={chain.id}>
+                        <img src={chain.logo} alt="" className="chain-logo" />
+                        {chain.name}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -21,7 +21,7 @@ const ImportMode = () => {
     },
     {
       name: 'json',
-      label: t('Import via Keystore'),
+      label: t('Import via KeyStore'),
     },
   ]);
 
@@ -70,12 +70,7 @@ const ImportMode = () => {
       hasDivider
       noPadding
     >
-      <header className="create-new-header create-password-header h-[234px]">
-        <img
-          className="rabby-logo"
-          src="/images/logo-white.svg"
-          alt="rabby logo"
-        />
+      <header className="create-new-header create-password-header h-[234px] dark:bg-r-blue-disable">
         <img
           className="unlock-logo w-[128px] h-[128px] mx-auto"
           src={ImportIcon}
@@ -83,7 +78,6 @@ const ImportMode = () => {
         <p className="text-24 mb-4 mt-0 text-white text-center font-bold">
           {t('Import')}
         </p>
-        <img src="/images/import-mask.png" className="mask" />
       </header>
       <div className="pt-32 px-20">
         {modes.map((e) => (

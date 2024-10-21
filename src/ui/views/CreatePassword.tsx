@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useHistory, useLocation } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Input, Form, Spin, Button, Drawer } from 'antd';
-import { useWallet, useWalletRequest } from 'ui/utils';
+import { openInTab, useWallet, useWalletRequest } from 'ui/utils';
 import UnlockLogo from 'ui/assets/unlock-logo.svg';
 import IconCheck from 'ui/assets/check.svg';
 import clsx from 'clsx';
@@ -65,6 +65,14 @@ const CreatePassword = () => {
 
   const disable = !agreeTerm || invalidForm;
 
+  const gotoTermsOfUse = () => {
+    openInTab('https://rabby.io/docs/terms-of-use');
+  };
+
+  const gotoPrivacy = () => {
+    openInTab('https://rabby.io/docs/privacy');
+  };
+
   const drawClassName = useCss({
     '& .ant-drawer-content': {
       boxShadow: '0px -12px 20px rgba(82, 86, 115, 0.1)',
@@ -74,7 +82,7 @@ const CreatePassword = () => {
       'h1,h2': {
         fontSize: '15px',
         fontWeight: '700',
-        color: 'rgba(19, 20, 26, 1)',
+        color: 'var(--r-neutral-title1)',
         margin: '20px 0',
       },
       p: {
@@ -85,7 +93,7 @@ const CreatePassword = () => {
       },
       'p,li': {
         fontSize: '14px',
-        color: 'rgba(75, 77, 89, 1)',
+        color: 'var(--r-neutral-body)',
       },
       'ol, ul': {
         listStyle: 'disc outside none',
@@ -111,7 +119,7 @@ const CreatePassword = () => {
 
   return (
     <Spin spinning={loading} wrapperClassName={spinClass} size="large">
-      <div className="rabby-container h-full" style={{ background: '#F5F6FA' }}>
+      <div className="rabby-container h-full bg-r-neutral-card2">
         <Form
           className="h-full"
           onFinish={({ password }) => run(password.trim())}
@@ -125,15 +133,15 @@ const CreatePassword = () => {
               className="unlock-logo w-[100px] h-[100px] mx-auto mb-[16px]"
               src={UnlockLogo}
             />
-            <p className="text-24 mb-8 mt-0 text-white text-center font-bold">
-              Set Password
+            <p className="text-24 mb-8 mt-0 text-r-neutral-title2 text-center font-bold">
+              {t('page.createPassword.title')}
             </p>
-            <p className="text-14 mb-0 text-white opacity-80 text-center">
+            <p className="text-13 mb-0 text-r-neutral-title2 opacity-80 text-center">
               It will be used to unlock your wallet and encrypt local data
             </p>
             <img src="/images/create-password-mask.png" className="mask" />
           </header>
-          <div className="p-32 min-h-[232px] max-h-[232px] overflow-hidden">
+          <div className="p-32 min-h-[232px] max-h-[232px] overflow-hidden widget-has-ant-input-withborder">
             <Form.Item
               className="mb-0 overflow-hidden"
               name="password"
@@ -141,18 +149,18 @@ const CreatePassword = () => {
               rules={[
                 {
                   required: true,
-                  message: t('Please input Password'),
+                  message: t('page.createPassword.passwordRequired'),
                 },
                 {
                   min: MINIMUM_PASSWORD_LENGTH,
-                  message: 'Password must be at least 8 characters long',
+                  message: t('page.createPassword.passwordMin'),
                 },
               ]}
             >
               <Input
                 className={'h-[52px]'}
                 size="large"
-                placeholder={'Password must be at least 8 characters long'}
+                placeholder={t('page.createPassword.passwordPlaceholder')}
                 type="password"
                 autoFocus
                 spellCheck={false}
@@ -165,7 +173,7 @@ const CreatePassword = () => {
               rules={[
                 {
                   required: true,
-                  message: t('Please Confirm Password'),
+                  message: t('page.createPassword.confirmRequired'),
                 },
                 ({ getFieldValue }) => ({
                   validator(_, value: string) {
@@ -173,7 +181,7 @@ const CreatePassword = () => {
                       return Promise.resolve();
                     }
                     return Promise.reject(
-                      new Error(t('Passwords do not match'))
+                      new Error(t('page.createPassword.confirmError'))
                     );
                   },
                 }),
@@ -182,36 +190,49 @@ const CreatePassword = () => {
               <Input
                 className="h-[52px]"
                 size="large"
-                placeholder={'Confirm password'}
+                placeholder={t('page.createPassword.confirmPlaceholder')}
                 type="password"
                 spellCheck={false}
               />
             </Form.Item>
           </div>
           <div
-            className="flex items-center justify-center mb-[24px] cursor-pointer"
+            className="flex justify-center mb-[24px] cursor-pointer mx-32"
             onClick={toggleAgreeTerm}
           >
             <div
               className={clsx(
+                'relative top-[3px]',
                 'w-[15px] h-[15px] mr-[6px] flex items-center justify-center  rounded-full overflow-hidden',
-                agreeTerm ? 'bg-blue-light' : 'bg-gray-comment'
+                agreeTerm ? 'bg-r-blue-default' : 'bg-r-neutral-foot'
               )}
             >
               <img src={IconCheck} className="w-[10px]" />
             </div>
-            <span className="text-[13px] text-gray-subTitle">
-              I have read and agree to the{' '}
-              <span
-                className="text-blue-light cursor-pointer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleVisible();
-                }}
-              >
-                Terms of Use
-              </span>
-            </span>{' '}
+            <span className="flex-1 text-[13px] text-r-neutral-body">
+              <Trans t={t} i18nKey="page.createPassword.agree">
+                have read and agree to the{' '}
+                <span
+                  className="text-r-blue-default cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    gotoTermsOfUse();
+                  }}
+                >
+                  Terms of Use
+                </span>
+                and
+                <span
+                  className="text-r-blue-default cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    gotoPrivacy();
+                  }}
+                >
+                  Privacy Policy
+                </span>
+              </Trans>
+            </span>
           </div>
           <div className="p-32 pt-0">
             <Button
@@ -232,14 +253,14 @@ const CreatePassword = () => {
         width={'100%'}
         visible={visible}
         onClose={toggleVisible}
-        className={drawClassName}
+        className={clsx(drawClassName, 'is-support-darkmode')}
         contentWrapperStyle={{
           boxShadow: '0px -12px 20px rgba(82, 86, 115, 0.1)',
           borderRadius: '16px 16px 0px 0',
           height: 580,
         }}
       >
-        <header className="text-gray-title mb-[20px] text-20 font-medium leading-[20px] text-center">
+        <header className="text-r-neutral-title1 mb-[20px] text-20 font-medium leading-[20px] text-center">
           Rabby Term of Use
         </header>
         <div

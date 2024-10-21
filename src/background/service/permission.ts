@@ -1,7 +1,10 @@
+import { CHAINS, SIGN_PERMISSION_TYPES } from './../../constant/index';
 import LRU from 'lru-cache';
 import { createPersistStore } from 'background/utils';
 import { CHAINS_ENUM, INTERNAL_REQUEST_ORIGIN } from 'consts';
 import { max } from 'lodash';
+import { findChain, findChainByEnum } from '@/utils/chain';
+import { BasicDappInfo } from './openapi';
 
 export interface ConnectedSite {
   origin: string;
@@ -13,6 +16,9 @@ export interface ConnectedSite {
   isTop: boolean;
   order?: number;
   isConnected: boolean;
+  preferMetamask?: boolean;
+  isFavorite?: boolean;
+  info?: BasicDappInfo;
 }
 
 export type PermissionStore = {
@@ -32,14 +38,24 @@ class PermissionService {
     this.store = storage || this.store;
 
     this.lruCache = new LRU();
+
+    let filtered = false;
     const cache: ReadonlyArray<LRU.Entry<string, ConnectedSite>> = (
       this.store.dumpCache || []
-    ).map((item) => ({
-      k: item.k,
-      v: item.v,
-      e: 0,
-    }));
+    )
+      .filter((item) => {
+        const found = item?.v?.chain && findChainByEnum(item.v.chain);
+        if (!filtered && !found) filtered = true;
+        return found;
+      })
+      .map((item) => ({
+        k: item.k,
+        v: item.v,
+        e: 0,
+      }));
     this.lruCache.load(cache);
+
+    if (filtered) this.sync();
   };
 
   sync = () => {
@@ -53,8 +69,25 @@ class PermissionService {
     return this.lruCache.peek(key);
   };
 
-  getSite = (origin: string) => {
-    return this.lruCache?.get(origin);
+  private _getSite = (origin: string) => {
+    const siteItem = this.lruCache?.get(origin);
+
+    if (!siteItem) return siteItem;
+
+    const chainItem = findChain({ enum: siteItem.chain });
+
+    return chainItem
+      ? siteItem
+      : {
+          ...siteItem,
+          chain: CHAINS_ENUM.ETH,
+          isConnected: false,
+        };
+  };
+
+  getSite = (origin: string | number) => {
+    const _origin = origin.toString();
+    return this._getSite(_origin);
   };
 
   setSite = (site: ConnectedSite) => {
@@ -63,6 +96,16 @@ class PermissionService {
     this.sync();
   };
 
+  /**
+   * @deprecated
+   *
+   * @param origin
+   * @param name
+   * @param icon
+   * @param defaultChain
+   * @param isSigned
+   * @returns
+   */
   addConnectedSite = (
     origin: string,
     name: string,
@@ -84,6 +127,36 @@ class PermissionService {
     this.sync();
   };
 
+  addConnectedSiteV2 = ({
+    origin,
+    name,
+    icon,
+    defaultChain,
+    isSigned = false,
+  }: {
+    origin: string;
+    name: string;
+    icon: string;
+    defaultChain: CHAINS_ENUM;
+    isSigned?: boolean;
+  }) => {
+    if (!this.lruCache) return;
+
+    const site = this._getSite(origin);
+
+    this.lruCache.set(origin, {
+      ...site,
+      origin,
+      name,
+      icon,
+      isSigned,
+      isTop: false,
+      chain: defaultChain,
+      isConnected: true,
+    });
+    this.sync();
+  };
+
   touchConnectedSite = (origin) => {
     if (!this.lruCache) return;
     if (origin === INTERNAL_REQUEST_ORIGIN) return;
@@ -99,8 +172,12 @@ class PermissionService {
     if (!this.lruCache || !this.lruCache.has(origin)) return;
     if (origin === INTERNAL_REQUEST_ORIGIN) return;
 
+    if (value.chain && !findChain({ enum: value.chain })) {
+      return;
+    }
+
     if (partialUpdate) {
-      const _value = this.lruCache.get(origin);
+      const _value = this._getSite(origin);
       this.lruCache.set(origin, { ..._value, ...value } as ConnectedSite);
     } else {
       this.lruCache.set(origin, value as ConnectedSite);
@@ -113,7 +190,7 @@ class PermissionService {
     if (!this.lruCache) return;
     if (origin === INTERNAL_REQUEST_ORIGIN) return true;
 
-    const site = this.lruCache.get(origin);
+    const site = this._getSite(origin);
     return site && site.isConnected;
   };
 
@@ -153,8 +230,18 @@ class PermissionService {
     return (this.lruCache?.values() || []).filter((item) => item.isConnected);
   };
 
+  getSites = () => {
+    return this.lruCache?.values() || [];
+  };
+
+  getPreferMetamaskSites = () => {
+    return (this.lruCache?.values() || []).filter(
+      (item) => item.preferMetamask
+    );
+  };
+
   getConnectedSite = (key: string) => {
-    const site = this.lruCache?.get(key);
+    const site = this._getSite(key);
     if (site && site.isConnected) {
       return site;
     }
@@ -170,6 +257,28 @@ class PermissionService {
       ...site,
       order,
       isTop: true,
+    });
+  };
+
+  favoriteWebsite = (origin: string, order?: number) => {
+    const site = this.getConnectedSite(origin);
+    if (!site || !this.lruCache) return;
+    order =
+      order ??
+      (max(this.getRecentConnectedSites().map((item) => item.order)) || 0) + 1;
+    this.updateConnectSite(origin, {
+      ...site,
+      order,
+      isFavorite: true,
+    });
+  };
+
+  unFavoriteWebsite = (origin: string) => {
+    const site = this.getConnectedSite(origin);
+    if (!site || !this.lruCache) return;
+    this.updateConnectSite(origin, {
+      ...site,
+      isFavorite: false,
     });
   };
 

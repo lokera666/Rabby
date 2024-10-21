@@ -1,7 +1,9 @@
 import { TxDisplayItem, TxHistoryItem } from '@/background/service/openapi';
 import React from 'react';
 import { NameAndAddress } from '..';
+import { getTokenSymbol } from 'ui/utils/token';
 import { TxAvatar } from './TxAvatar';
+import { useTranslation } from 'react-i18next';
 
 type TxInterAddressExplainProps = {
   data: TxDisplayItem | TxHistoryItem;
@@ -16,13 +18,14 @@ export const TxInterAddressExplain = ({
   const isCancel = data.cate_id === 'cancel';
   const isApprove = data.cate_id === 'approve';
   const project = data.project_id ? projectDict[data.project_id] : null;
+  const { t } = useTranslation();
 
   const projectName = (
     <span>
       {project?.name ? (
         project.name
       ) : data.other_addr ? (
-        <NameAndAddress address={data.other_addr} />
+        <NameAndAddress address={data.other_addr} copyIcon={!data.is_scam} />
       ) : (
         ''
       )}
@@ -32,15 +35,20 @@ export const TxInterAddressExplain = ({
   let interAddressExplain;
 
   if (isCancel) {
-    interAddressExplain = 'Canceled a pending transaction';
+    interAddressExplain = t('page.transactions.explain.cancel');
   } else if (isApprove) {
-    const approveToken = tokenDict[data.token_approve?.token_id || ''];
+    const tokenId = data.token_approve?.token_id || '';
+    const tokenUUID = `${data.chain}_token:${tokenId}`;
+
+    const approveToken = tokenDict[tokenId] || tokenDict[tokenUUID];
+
     const amount = data.token_approve?.value || 0;
 
+    // todo: translate
     interAddressExplain = (
       <div className="tx-explain-title">
         Approve {amount < 1e9 ? amount.toFixed(4) : 'infinite'}{' '}
-        {`${approveToken.symbol || approveToken.display_symbol} for `}
+        {`${getTokenSymbol(approveToken)} for `}
         {projectName}
       </div>
     );
@@ -49,7 +57,7 @@ export const TxInterAddressExplain = ({
       <>
         <div className="tx-explain-title">
           {cateDict[data.cate_id || '']?.name ??
-            (data.tx?.name || 'Contract Interaction')}
+            (data.tx?.name || t('page.transactions.explain.unknown'))}
         </div>
         <div className="tx-explain-desc">{projectName}</div>
       </>

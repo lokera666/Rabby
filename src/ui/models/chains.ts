@@ -1,35 +1,40 @@
 import { createModel } from '@rematch/core';
 
 import { ConnectedSite } from '@/background/service/permission';
-import Safe from '@rabby-wallet/gnosis-sdk';
-import type { SafeInfo } from '@rabby-wallet/gnosis-sdk/dist/api';
-
-import { crossCompareOwners } from '../utils/gnosis';
 
 import { RootModel } from '.';
-import { CHAINS, KEYRING_CLASS } from '@/constant';
+import { CHAINS_ENUM, KEYRING_CLASS } from '@/constant';
 import { RabbyRootState } from '../store';
+import {
+  findChainByEnum,
+  getChainList,
+  getMainnetChainList,
+  getMainnetListFromLocal,
+  getTestnetChainList,
+  updateChainStore,
+  varyAndSortChainItems,
+} from '@/utils/chain';
+import type { AccountState } from './account';
+import { Chain } from '@debank/common';
+import { TestnetChain } from '@/background/service/customTestnet';
 
 type IState = {
   currentConnection: ConnectedSite | null | undefined;
 
   gnosisPendingCount: number;
 
-  safeInfo: SafeInfo | null;
-
-  gnosisNetworkId: string;
+  gnosisNetworkIds: string[];
+  mainnetList: Chain[];
+  testnetList: TestnetChain[];
 };
 
 export const chains = createModel<RootModel>()({
   name: 'chains',
   state: <IState>{
     currentConnection: null,
-
-    gnosisPendingCount: 0,
-
-    safeInfo: null,
-
-    gnosisNetworkId: '1',
+    gnosisNetworkIds: [] as string[],
+    mainnetList: getChainList('mainnet'),
+    testnetList: getChainList('testnet'),
   },
   reducers: {
     setField(state, payload: Partial<typeof state>) {
@@ -42,7 +47,6 @@ export const chains = createModel<RootModel>()({
       );
     },
   },
-
   selectors(slice) {
     return {
       isCurrentAccountGnosis() {
@@ -58,40 +62,68 @@ export const chains = createModel<RootModel>()({
             return false;
           }
 
-          const chain = CHAINS[state.currentConnection.chain];
+          const chainItem = findChainByEnum(state.currentConnection.chain);
 
-          return chain.id.toString() !== state.gnosisNetworkId;
+          return (
+            !!chainItem && !state.gnosisNetworkIds.includes(chainItem.network)
+          );
         });
       },
     };
   },
-
   effects: (dispatch) => ({
-    async getGnosisPendingCountAsync(_?, store?) {
-      if (!store.account.currentAccount) return;
-      const currentAccount = store.account.currentAccount;
-
-      const network = await store.app.wallet.getGnosisNetworkId(
-        currentAccount.address
-      );
-      dispatch.chains.setField({ gnosisNetworkId: network });
-      const [info, txs] = await Promise.all([
-        Safe.getSafeInfo(currentAccount.address, network),
-        Safe.getPendingTransactions(currentAccount.address, network),
-      ]);
-      const owners = await store.app.wallet.getGnosisOwners(
-        currentAccount,
-        currentAccount.address,
-        info.version
-      );
-      const comparedOwners = crossCompareOwners(owners, info.owners);
-      dispatch.chains.setField({
-        safeInfo: {
-          ...info,
-          owners: comparedOwners,
-        },
-        gnosisPendingCount: txs.results.length,
+    init(_: void, store) {
+      store.app.wallet.getCustomTestnetList().then((testnetList) => {
+        updateChainStore({
+          testnetList: testnetList,
+        });
+        this.setField({ testnetList });
       });
+      getMainnetListFromLocal().then((mainnetList) => {
+        if (mainnetList.length) {
+          updateChainStore({
+            mainnetList: mainnetList,
+          });
+          this.setField({ mainnetList });
+        }
+      });
+    },
+    /**
+     * @description get all chains current account could access, vary them and sort them
+     */
+    async getOrderedChainList(
+      opts: {
+        supportChains?: CHAINS_ENUM[];
+      },
+      store
+    ) {
+      const { supportChains } = opts || {};
+      const { pinned, matteredChainBalances } = await Promise.allSettled([
+        dispatch.preference.getPreference('pinnedChain'),
+        dispatch.account.getMatteredChainBalance(),
+      ]).then(([pinnedChain, balance]) => {
+        return {
+          pinned: (pinnedChain.status === 'fulfilled'
+            ? pinnedChain.value
+            : []) as CHAINS_ENUM[],
+          matteredChainBalances: (balance.status === 'fulfilled'
+            ? // only SUPPORT mainnet now
+              balance.value.matteredChainBalances
+            : {}) as AccountState['matteredChainBalances'],
+        };
+      });
+
+      const { matteredList, unmatteredList } = varyAndSortChainItems({
+        supportChains,
+        pinned,
+        matteredChainBalances,
+      });
+
+      return {
+        matteredList,
+        unmatteredList,
+        firstChain: matteredList[0],
+      };
     },
   }),
 });

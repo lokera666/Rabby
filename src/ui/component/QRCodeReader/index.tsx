@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserQRCodeReader } from '@zxing/browser';
 import './style.less';
 import { openInternalPageInTab } from 'ui/utils';
+import clsx from 'clsx';
 
 interface QRCodeReaderProps {
   onSuccess(text: string): void;
@@ -9,6 +10,8 @@ interface QRCodeReaderProps {
   width?: number;
   height?: number;
   isUR?: boolean;
+  className?: string;
+  needAccessRedirect?: boolean;
 }
 
 const QRCodeReader = ({
@@ -16,10 +19,15 @@ const QRCodeReader = ({
   onError,
   width = 100,
   height = 100,
+  className,
+  needAccessRedirect = true,
 }: QRCodeReaderProps) => {
   const [canplay, setCanplay] = useState(false);
   const codeReader = useMemo(() => {
-    return new BrowserQRCodeReader();
+    return new BrowserQRCodeReader(undefined, {
+      delayBetweenScanSuccess: 100,
+      delayBetweenScanAttempts: 50,
+    });
   }, []);
   const videoEl = useRef<HTMLVideoElement>(null);
   const checkCameraPermission = async () => {
@@ -28,8 +36,8 @@ const QRCodeReader = ({
     const hasWebcamPermissions = webcams.some(
       (webcam) => webcam.label && webcam.label.length > 0
     );
-    if (!hasWebcamPermissions) {
-      openInternalPageInTab('request-permission?type=camera');
+    if (!hasWebcamPermissions && needAccessRedirect) {
+      openInternalPageInTab('request-permission?type=camera', true, false);
     }
   };
   useEffect(() => {
@@ -72,7 +80,7 @@ const QRCodeReader = ({
         filter: 'blur(4px)',
       }}
       ref={videoEl}
-      className="qrcode-reader-comp"
+      className={clsx('qrcode-reader-comp', className)}
     ></video>
   );
 };

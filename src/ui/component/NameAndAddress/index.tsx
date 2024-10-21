@@ -1,14 +1,25 @@
-import React, { useEffect, useState } from 'react';
-import ClipboardJS from 'clipboard';
-import { message } from 'antd';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { Tooltip } from 'antd';
+
 import { useWallet } from 'ui/utils';
-
-import IconSuccess from 'ui/assets/success.svg';
-import IconAddressCopy from 'ui/assets/component/icon-copy.svg';
-
-import './index.less';
 import clsx from 'clsx';
-import { ALIAS_ADDRESS } from '@/constant';
+import { ALIAS_ADDRESS, CHAINS_ENUM, ThemeIconType } from '@/constant';
+import { openInTab } from '@/ui/utils';
+import { findChainByEnum } from '@/utils/chain';
+import { copyAddress } from '@/ui/utils/clipboard';
+
+import IconAddressCopy from 'ui/assets/icon-copy-2.svg';
+import IconExternal from 'ui/assets/icon-share.svg';
+import './index.less';
+import { useTranslation } from 'react-i18next';
+import { getAddressScanLink } from '@/utils';
+import ThemeIcon from '../ThemeMode/ThemeIcon';
 
 interface NameAndAddressProps {
   className?: string;
@@ -16,7 +27,19 @@ interface NameAndAddressProps {
   nameClass?: string;
   addressClass?: string;
   noNameClass?: string;
+  openExternal?: boolean;
+  externalIconProps?: Partial<React.ComponentProps<typeof ThemeIcon>>;
+  chainEnum?: CHAINS_ENUM;
+  copyIcon?: boolean | ThemeIconType;
   copyIconClass?: string;
+  copyIconProps?: React.ComponentProps<typeof ThemeIcon>;
+  addressSuffix?: React.ReactNode;
+  tooltipAliasName?: boolean;
+  /**
+   * @description don't know why click event not be stopped when click copy icon,
+   * just add this prop to fix it in some case.
+   */
+  __internalRestrainClickEventOnCopyIcon?: boolean;
 }
 
 const NameAndAddress = ({
@@ -26,50 +49,83 @@ const NameAndAddress = ({
   addressClass = '',
   noNameClass = '',
   copyIconClass = '',
+  openExternal = false,
+  externalIconProps = { className: copyIconClass },
+  chainEnum,
+  copyIcon = true,
+  copyIconProps,
+  addressSuffix = null,
+  tooltipAliasName = false,
+  __internalRestrainClickEventOnCopyIcon = false,
 }: NameAndAddressProps) => {
   const wallet = useWallet();
   const [alianName, setAlianName] = useState('');
+
+  const mountedRef = useRef(false);
+  const { t } = useTranslation();
   const init = async () => {
     const alianName =
       (await wallet.getAlianName(address?.toLowerCase())) ||
       ALIAS_ADDRESS[address?.toLowerCase() || ''] ||
       '';
+
+    if (!mountedRef.current) return;
     setAlianName(alianName);
   };
   const localName = alianName || '';
   const handleCopyContractAddress = () => {
-    const clipboard = new ClipboardJS('.name-and-address', {
-      text: function () {
-        return address;
-      },
-    });
-
-    clipboard.on('success', () => {
-      message.success({
-        duration: 3,
-        icon: <i />,
-        content: (
-          <div>
-            <div className="flex gap-4 mb-4">
-              <img src={IconSuccess} alt="" />
-              Copied
-            </div>
-            <div className="text-white">{address}</div>
-          </div>
-        ),
-      });
-      clipboard.destroy();
-    });
+    copyAddress(address);
   };
+
+  const handleClickCopyIcon = useCallback(
+    (
+      evt: Parameters<
+        Exclude<React.DOMAttributes<HTMLImageElement>['onClick'], void>
+      >[0]
+    ) => {
+      evt.stopPropagation();
+      copyAddress(address);
+    },
+    [address]
+  );
+
+  const handleClickContractId = () => {
+    if (!chainEnum) return;
+    const chainItem = findChainByEnum(chainEnum);
+    if (!chainItem) return;
+    openInTab(getAddressScanLink(chainItem?.scanLink, address), false);
+  };
+
   useEffect(() => {
+    mountedRef.current = true;
     init();
+
+    return () => {
+      mountedRef.current = false;
+    };
   }, [address]);
+
+  const { isShowCopyIcon, iconCopySrc } = useMemo(() => {
+    return {
+      isShowCopyIcon: !!copyIcon,
+      iconCopySrc:
+        typeof copyIcon === 'string'
+          ? copyIcon.trim() || IconAddressCopy
+          : IconAddressCopy,
+    };
+  }, [copyIcon]);
+
   return (
     <div className={clsx('name-and-address', className)}>
       {localName && (
-        <div className={clsx('name', nameClass)} title={localName}>
-          {localName}
-        </div>
+        <Tooltip
+          {...(!tooltipAliasName && { visible: false })}
+          overlay={<>{localName}</>}
+        >
+          <div className={clsx('name', nameClass)} title={localName}>
+            {localName}
+          </div>
+        </Tooltip>
       )}
       <div
         className={clsx('address', addressClass, !localName && noNameClass)}
@@ -83,18 +139,46 @@ const NameAndAddress = ({
               ?.toLowerCase()
               .slice(0, 6)}...${address?.toLowerCase().slice(-4)}`}
       </div>
-      <img
-        onClick={handleCopyContractAddress}
-        src={IconAddressCopy}
-        id={'copyIcon'}
-        width={16}
-        height={16}
-        className={clsx('ml-4 cursor-pointer', copyIconClass, {
-          success: true,
-        })}
-      />
+      {addressSuffix || null}
+      {openExternal && (
+        <ThemeIcon
+          onClick={handleClickContractId}
+          src={IconExternal}
+          width={16}
+          height={16}
+          {...(externalIconProps as any)}
+          className={clsx('ml-6 cursor-pointer', externalIconProps?.className)}
+        />
+      )}
+      {isShowCopyIcon && (
+        <ThemeIcon
+          src={iconCopySrc}
+          onClick={
+            __internalRestrainClickEventOnCopyIcon
+              ? handleClickCopyIcon
+              : handleCopyContractAddress
+          }
+          width={16}
+          height={16}
+          {...(copyIconProps as any)}
+          className={clsx(
+            'ml-6 cursor-pointer',
+            copyIconClass,
+            {
+              success: true,
+            },
+            copyIconProps?.className
+          )}
+        />
+      )}
     </div>
   );
 };
 
 export default NameAndAddress;
+
+NameAndAddress.SafeCopy = (
+  props: Omit<NameAndAddressProps, '__internalRestrainClickEventOnCopyIcon'>
+) => {
+  return <NameAndAddress {...props} __internalRestrainClickEventOnCopyIcon />;
+};

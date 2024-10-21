@@ -3,7 +3,7 @@
     "baseUrl": "./",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "module": "ESNext",
+    "module": "esnext",
     "target": "ES2020",
     "moduleResolution": "node",
     "noImplicitAny": false,
@@ -11,7 +11,7 @@
     "esModuleInterop": true,
     "useUnknownInCatchVariables": false,
     "paths": {
-      "utils": ["./src/utils"],
+      "@/utils": ["./src/utils"],
       "@/*": ["./src/*"],
       "ui/*": ["./src/ui/*"],
       "background/*": ["./src/background/*"],
@@ -36,7 +36,8 @@
       }
     ],
     "outDir": "./dist",
-    "sourceMap": true
+    "sourceMap": true,
+    "resolveJsonModule": true
   },
   "exclude": ["./node_modules"],
   "include": ["src", "__tests__"]

@@ -49,7 +49,7 @@ const GetEncryptionPublicKey = ({ params }: ConnectProps) => {
     setCanProcess(
       !!account &&
         [KEYRING_TYPE.HdKeyring, KEYRING_TYPE.SimpleKeyring].includes(
-          account.type
+          account.type as any
         )
     );
   };
@@ -76,7 +76,7 @@ const GetEncryptionPublicKey = ({ params }: ConnectProps) => {
           this site will be able to compose encrypted messages to you.
         </div>
       </div>
-      <footer className="footer">
+      <footer className="footer p-[20px]">
         <div className="action-buttons flex justify-between mt-4">
           <Button
             type="primary"

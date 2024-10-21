@@ -1,33 +1,25 @@
-// import './wdyr';
 import React from 'react';
 import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
 import Views from './views';
-import { Message } from '@/utils';
+import { Message } from '@/utils/message';
 import { getUITypeName } from 'ui/utils';
 import eventBus from '@/eventBus';
 import * as Sentry from '@sentry/react';
-import { Integrations } from '@sentry/tracing';
-import i18n, { addResourceBundle } from 'src/i18n';
+import i18n, { addResourceBundle, changeLanguage } from 'src/i18n';
 import { EVENTS } from 'consts';
 
 import type { WalletControllerType } from 'ui/utils/WalletContext';
 
 import store from './store';
 
-import '../i18n';
-import { getSentryEnv } from '@/utils/env';
+import { getSentryEnv, isManifestV3 } from '@/utils/env';
+import { updateChainStore } from '@/utils/chain';
 
 Sentry.init({
   dsn:
-    'https://e871ee64a51b4e8c91ea5fa50b67be6b@o460488.ingest.sentry.io/5831390',
-  integrations: [new Integrations.BrowserTracing()],
+    'https://a864fbae7ba680ce68816ff1f6ef2c4e@o4507018303438848.ingest.us.sentry.io/4507018389749760',
   release: process.env.release,
-
-  // Set tracesSampleRate to 1.0 to capture 100%
-  // of transactions for performance monitoring.
-  // We recommend adjusting this value in production
-  tracesSampleRate: 1.0,
   environment: getSentryEnv(),
   ignoreErrors: [
     'ResizeObserver loop limit exceeded',
@@ -35,6 +27,8 @@ Sentry.init({
     'Network Error',
     'Request limit exceeded.',
     'Non-Error promise rejection captured with keys: code, message',
+    'Non-Error promise rejection captured with keys: message, stack',
+    'Failed to fetch',
   ],
 });
 
@@ -50,7 +44,7 @@ function initAppMeta() {
   head?.appendChild(name);
   const description = document.createElement('meta');
   description.name = 'description';
-  description.content = i18n.t('appDescription');
+  description.content = i18n.t('global.appDescription');
   head?.appendChild(description);
 }
 
@@ -59,8 +53,6 @@ initAppMeta();
 const { PortMessage } = Message;
 
 const portMessageChannel = new PortMessage();
-
-portMessageChannel.connect(getUITypeName());
 
 const wallet = new Proxy(
   {},
@@ -83,6 +75,22 @@ const wallet = new Proxy(
             }
           );
           break;
+        case 'testnetOpenapi':
+          return new Proxy(
+            {},
+            {
+              get(obj, key) {
+                return function (...params: any) {
+                  return portMessageChannel.request({
+                    type: 'testnetOpenapi',
+                    method: key,
+                    params,
+                  });
+                };
+              },
+            }
+          );
+          break;
         default:
           return function (...params: any) {
             return portMessageChannel.request({
@@ -96,9 +104,9 @@ const wallet = new Proxy(
   }
 ) as WalletControllerType;
 
-portMessageChannel.listen((data) => {
-  if (data.type === 'broadcast') {
-    eventBus.emit(data.method, data.params);
+portMessageChannel.on('message', (data) => {
+  if (data.event === 'broadcast') {
+    eventBus.emit(data.data.type, data.data.data);
   }
 });
 
@@ -111,11 +119,46 @@ eventBus.addEventListener(EVENTS.broadcastToBackground, (data) => {
 });
 
 store.dispatch.app.initWallet({ wallet });
-store.dispatch.app.initBizStore();
 
-ReactDOM.render(
-  <Provider store={store}>
-    <Views wallet={wallet} />
-  </Provider>,
-  document.getElementById('root')
-);
+eventBus.addEventListener('syncChainList', (params) => {
+  store.dispatch.chains.setField(params);
+  updateChainStore(params);
+});
+
+const main = () => {
+  portMessageChannel.connect(getUITypeName());
+
+  store.dispatch.app.initBizStore();
+  store.dispatch.chains.init();
+
+  wallet.getLocale().then((locale) => {
+    addResourceBundle(locale).then(() => {
+      changeLanguage(locale);
+      ReactDOM.render(
+        <Provider store={store}>
+          <Views wallet={wallet} />
+        </Provider>,
+        document.getElementById('root')
+      );
+    });
+  });
+};
+
+const bootstrap = () => {
+  if (!isManifestV3) {
+    main();
+    return;
+  }
+  chrome.runtime.sendMessage({ type: 'getBackgroundReady' }).then((res) => {
+    if (!res) {
+      setTimeout(() => {
+        bootstrap();
+      }, 100);
+      return;
+    }
+
+    main();
+  });
+};
+
+bootstrap();

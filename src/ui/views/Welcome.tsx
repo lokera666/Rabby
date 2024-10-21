@@ -4,19 +4,18 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import styled from 'styled-components';
 import WelcomeHeaderImg from 'ui/assets/welcome-header.svg';
-import WelcomeStep1 from 'ui/assets/welcome-step-1.png';
-import WelcomeStep2 from 'ui/assets/welcome-step-2.png';
 
 const Container = styled.div`
   .step {
     padding: 42px 20px 32px 20px;
+    background: var(--r-neutral-bg1);
   }
   .step-title {
     font-weight: 700;
     font-size: 22px;
     line-height: 24px;
     text-align: center;
-    color: #333333;
+    color: var(--r-neutral-title1);
     margin-bottom: 13px;
   }
   .step-content {
@@ -24,14 +23,8 @@ const Container = styled.div`
     font-size: 14px;
     line-height: 24px;
     text-align: center;
-    color: #333333;
-    margin-bottom: 45px;
-  }
-  .step-image {
-    width: 317px;
-    margin-left: auto;
-    margin-right: auto;
-    margin-bottom: 67px;
+    color: var(--r-neutral-title1);
+    margin-bottom: 48px;
   }
 `;
 
@@ -46,12 +39,13 @@ const Welcome = () => {
       </div>
       {step === 1 ? (
         <section className="step">
-          <div className="step-title">Access All Dapps</div>
-          <div className="step-content">
-            Rabby connects to all Dapps that MetaMask supports
-          </div>
-          <img className="step-image" src={WelcomeStep1} alt="" />
-          <footer>
+          <div className="step-title">{t('page.welcome.step1.title')}</div>
+          <div className="step-content">{t('page.welcome.step1.desc')}</div>
+          <img
+            src="/images/welcome-step-1.png"
+            className="w-[317px] h-[199px] mx-auto rounded-[10px]"
+          />
+          <footer className="mt-[64px]">
             <Button
               type="primary"
               size="large"
@@ -60,21 +54,22 @@ const Welcome = () => {
                 setStep(2);
               }}
             >
-              Next
+              {t('global.next')}
             </Button>
           </footer>
         </section>
       ) : (
         <section className="step">
-          <div className="step-title">Self-custodial</div>
-          <div className="step-content">
-            Private keys are stored locally with sole access to you
-          </div>
-          <img className="step-image" src={WelcomeStep2} alt="" />
-          <footer>
+          <div className="step-title">{t('page.welcome.step2.title')}</div>
+          <div className="step-content">{t('page.welcome.step2.desc')}</div>
+          <img
+            src="/images/welcome-step-2.png"
+            className="bg-r-neutral-card2 w-[317px] h-[199px] mx-auto rounded-[10px]"
+          />
+          <footer className="mt-[64px]">
             <Link to="/no-address" replace>
               <Button type="primary" size="large" block>
-                Get Started
+                {t('page.welcome.step2.btnText')}
               </Button>
             </Link>
           </footer>

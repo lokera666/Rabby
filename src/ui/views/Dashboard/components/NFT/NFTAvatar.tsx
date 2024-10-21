@@ -1,5 +1,4 @@
 import { NFTItem } from '@/background/service/openapi';
-import { CHAINS_ENUM } from '@/constant';
 import { Image } from 'antd';
 import clsx from 'clsx';
 import React from 'react';
@@ -8,7 +7,8 @@ import IconImgFail from 'ui/assets/img-fail-1.svg';
 import IconNFTDefault from 'ui/assets/nft-default.svg';
 import IconUnknown from 'ui/assets/token-default.svg';
 import IconZoom from 'ui/assets/zoom.svg';
-import { getChain } from 'utils';
+import { getChain } from '@/utils';
+import './style.less';
 
 type AvatarProps = {
   content?: string;
@@ -17,7 +17,7 @@ type AvatarProps = {
   type?: NFTItem['content_type'];
   className?: string;
   style?: React.CSSProperties;
-  onPreview?: () => void;
+  onPreview?: (e) => void;
   amount?: number;
   unknown?: string;
 };

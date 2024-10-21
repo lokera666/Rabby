@@ -14,12 +14,12 @@ export class Session {
 
   name = '';
 
-  pm: PortMessage | null = null;
+  pms: PortMessage[] = [];
 
   pushMessage(event, data) {
-    if (this.pm) {
-      this.pm.send('message', { event, data });
-    }
+    this.pms.forEach((pm) => {
+      pm.send('message', { event, data });
+    });
   }
 
   constructor(data?: SessionProp | null) {
@@ -29,7 +29,7 @@ export class Session {
   }
 
   setPortMessage(pm: PortMessage) {
-    this.pm = pm;
+    this.pms.push(pm);
   }
 
   setProp({ origin, icon, name }: SessionProp) {
@@ -41,6 +41,10 @@ export class Session {
 
 // for each tab
 const sessionMap = new Map<string, Session | null>();
+
+const getSessionMap = () => {
+  return sessionMap;
+};
 
 const getSession = (key: string) => {
   return sessionMap.get(key);
@@ -59,6 +63,15 @@ const createSession = (key: string, data?: null | SessionProp) => {
   sessionMap.set(key, session);
 
   return session;
+};
+
+const deleteSessionsByTabId = (tabId: number) => {
+  for (const key of sessionMap.keys()) {
+    const [sessionTab] = key.split('-');
+    if (sessionTab === tabId.toString()) {
+      deleteSession(key);
+    }
+  }
 };
 
 const deleteSession = (key: string) => {
@@ -93,8 +106,10 @@ const broadcastEvent = (ev, data?, origin?: string) => {
 };
 
 export default {
+  getSessionMap,
   getSession,
   getOrCreateSession,
   deleteSession,
+  deleteSessionsByTabId,
   broadcastEvent,
 };

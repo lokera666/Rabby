@@ -1,28 +1,39 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { CHAINS_ENUM, CHAINS } from '@debank/common';
-import { message, Button } from 'antd';
-import styled from 'styled-components';
-import { PageHeader } from 'ui/component';
-import ChainSelectorModal from 'ui/component/ChainSelector/Modal';
-import ChainIcon from 'ui/component/ChainIcon';
-import EditRPCModal from './components/EditRPCModal';
+import ThemeIcon from '@/ui/component/ThemeMode/ThemeIcon';
 import { useRabbyDispatch, useRabbySelector } from '@/ui/store';
+import { findChain, findChainByEnum } from '@/utils/chain';
 import { matomoRequestEvent } from '@/utils/matomo-request';
-import IconEdit from 'ui/assets/custom-rpc/edit.svg';
-import IconDelete from 'ui/assets/custom-rpc/delete.svg';
+import { CHAINS_ENUM } from '@debank/common';
+import { Button, Switch, message } from 'antd';
+import { RPCItem } from 'background/service/rpc';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import styled from 'styled-components';
+import { ReactComponent as RcIconDelete } from 'ui/assets/custom-rpc/delete.svg';
+import { ReactComponent as RcIconEdit } from 'ui/assets/custom-rpc/edit.svg';
 import IconSuccess from 'ui/assets/success.svg';
+import { PageHeader } from 'ui/component';
+import ChainIcon from 'ui/component/ChainIcon';
+import ChainSelectorModal from 'ui/component/ChainSelector/Modal';
+import EditRPCModal from './components/EditRPCModal';
 import './style.less';
+import { useHistory, useLocation } from 'react-router-dom';
+import { useMemoizedFn } from 'ahooks';
 
 const RPCItemWrapper = styled.div`
-  background: #ffffff;
+  background: var(--r-neutral-card-1, rgba(255, 255, 255, 0.06));
   border-radius: 6px;
-  padding: 12px 16px;
+  padding: 12px;
   display: flex;
   margin-bottom: 8px;
   height: 56px;
   border: 1px solid transparent;
+  align-items: center;
+  .switch-wrapper {
+    margin-right: 12px;
+  }
   .right {
     margin-left: 12px;
+    max-width: 194px;
     p {
       max-width: 194px;
       overflow: hidden;
@@ -31,40 +42,47 @@ const RPCItemWrapper = styled.div`
       margin: 0;
       &:nth-child(1) {
         margin-bottom: 2px;
-        font-size: 15px;
+        font-size: 13px;
         font-weight: 500;
         line-height: 18px;
-        color: #13141a;
+        color: var(--r-neutral-title-1, #f7fafc);
       }
       &:nth-child(2) {
         font-weight: 400;
         font-size: 13px;
         line-height: 15px;
-        color: #4b4d59;
+        color: var(--r-neutral-body, #d3d8e0);
       }
     }
   }
   .operation {
-    flex: 1;
     justify-content: flex-end;
-    display: none;
+    opacity: 0;
     align-items: center;
+    display: flex;
+    flex: 1;
     .icon {
-      width: 20px;
-      height: 20px;
+      width: 16px;
+      height: 16px;
       cursor: pointer;
       user-select: none;
       &:nth-child(1) {
-        margin-right: 20px;
+        margin-right: 12px;
       }
     }
   }
+  .chain-icon-comp {
+    img {
+      width: 24px;
+      height: 24px;
+    }
+  }
   &:hover {
-    background: rgba(134, 151, 255, 0.1);
-    border: 1px solid #8697ff;
+    background: var(--r-blue-light-1, #eef1ff);
+    border: 1px solid var(--r-blue-default, #7084ff);
     border-radius: 6px;
     .operation {
-      display: flex;
+      opacity: 1;
     }
   }
 `;
@@ -76,28 +94,49 @@ const RPCListContainer = styled.div`
 `;
 
 const Footer = styled.div`
-  height: 76px;
-  background: #ffffff;
-  padding: 16px 0;
+  height: 84px;
+  border-top: 0.5px solid var(--r-neutral-line, rgba(255, 255, 255, 0.1));
+  background: var(--r-neutral-bg1, rgba(255, 255, 255, 0.06));
+  padding: 20px;
   display: flex;
   justify-content: center;
 `;
 
-const RPCItem = ({
+const RPCItemComp = ({
   item,
   onEdit,
 }: {
-  item: { id: CHAINS_ENUM; rpc: string; nonce: number };
-  onEdit(item: { id: CHAINS_ENUM; rpc: string }): void;
+  item: { id: CHAINS_ENUM; rpc: RPCItem; nonce: number };
+  onEdit(item: { id: CHAINS_ENUM; rpc: RPCItem }): void;
 }) => {
   const dispatch = useRabbyDispatch();
+  const { t } = useTranslation();
 
-  const chain = useMemo(() => {
-    return CHAINS[item.id];
+  const chainItem = useMemo(() => {
+    return findChainByEnum(item.id);
   }, [item]);
 
   const handleEdit = () => {
     onEdit(item);
+  };
+
+  const handleSwitchRPCEnable = async (val: boolean) => {
+    await dispatch.customRPC.setRPCEnable({
+      chain: item.id,
+      enable: val,
+    });
+    message.success({
+      duration: 0.5,
+      icon: <i />,
+      content: (
+        <div>
+          <div className="flex gap-4 mb-4">
+            <img src={IconSuccess} alt="" />
+            {val ? t('page.customRpc.opened') : t('page.customRpc.closed')}
+          </div>
+        </div>
+      ),
+    });
   };
 
   const handleDelete = async () => {
@@ -114,7 +153,7 @@ const RPCItem = ({
         <div>
           <div className="flex gap-4 mb-4">
             <img src={IconSuccess} alt="" />
-            Deleted
+            {t('global.Deleted')}
           </div>
         </div>
       ),
@@ -123,15 +162,26 @@ const RPCItem = ({
 
   return (
     <RPCItemWrapper>
-      <ChainIcon chain={item.id} customRPC={item.rpc} nonce={item.nonce} />
+      <div className="switch-wrapper">
+        <Switch checked={item.rpc.enable} onChange={handleSwitchRPCEnable} />
+      </div>
+      <ChainIcon
+        chain={item.id}
+        customRPC={item.rpc?.enable ? item.rpc.url : undefined}
+        nonce={item.nonce}
+      />
       <div className="right">
-        <p>{chain.name}</p>
-        <p title={item.rpc}>{item.rpc}</p>
+        <p>{chainItem?.name || ''}</p>
+        <p title={item.rpc.url}>{item.rpc.url}</p>
       </div>
       <div className="operation">
-        <img src={IconEdit} className="icon icon-edit" onClick={handleEdit} />
-        <img
-          src={IconDelete}
+        <ThemeIcon
+          src={RcIconEdit}
+          className="icon icon-edit"
+          onClick={handleEdit}
+        />
+        <ThemeIcon
+          src={RcIconDelete}
           className="icon icon-delete"
           onClick={handleDelete}
         />
@@ -141,6 +191,7 @@ const RPCItem = ({
 };
 
 const CustomRPC = () => {
+  const { t } = useTranslation();
   const { customRPC } = useRabbySelector((s) => ({
     ...s.customRPC,
   }));
@@ -152,9 +203,12 @@ const CustomRPC = () => {
   );
   const [editRPC, setEditRPC] = useState<{
     id: CHAINS_ENUM;
-    rpc: string;
+    rpc: RPCItem;
   } | null>(null);
   const [nonce, setNonce] = useState(0);
+
+  const history = useHistory();
+  const location = useLocation();
 
   const rpcList = useMemo(() => {
     return Object.keys(customRPC).map((key) => ({
@@ -175,7 +229,7 @@ const CustomRPC = () => {
     setRPCModalVisible(true);
   };
 
-  const handleEditRPC = (item: { id: CHAINS_ENUM; rpc: string }) => {
+  const handleEditRPC = (item: { id: CHAINS_ENUM; rpc: RPCItem }) => {
     setSelectedChain(item.id);
     setEditRPC(item);
     setRPCModalVisible(true);
@@ -210,8 +264,28 @@ const CustomRPC = () => {
     setEditRPC(null);
   };
 
+  const handleLocationState = useMemoizedFn(
+    (customRPC: Record<string, RPCItem>) => {
+      if (location.state) {
+        const { chainId, rpcUrl } = location.state as any;
+        const chainInfo = findChain({
+          id: chainId,
+        });
+        if (chainInfo) {
+          const chain = chainInfo.enum;
+          setSelectedChain(chain);
+          setEditRPC({
+            id: chain,
+            rpc: { ...customRPC[chain], url: rpcUrl },
+          });
+          setRPCModalVisible(true);
+        }
+      }
+    }
+  );
+
   useEffect(() => {
-    dispatch.customRPC.getAllRPC();
+    dispatch.customRPC.getAllRPC().then(handleLocationState);
   }, []);
 
   useEffect(() => {
@@ -227,36 +301,43 @@ const CustomRPC = () => {
         src="/images/nodata-tx.png"
         alt="no address"
       />
-      <p className="text-gray-content text-14 text-center font-medium">
-        No custom RPC
+      <p className="text-r-neutral-body text-14 text-center font-medium">
+        {t('page.customRpc.empty')}
       </p>
     </div>
   );
 
   return (
     <div className="custom-rpc">
-      <PageHeader className="pt-[24px] mx-[20px] mb-16">Custom RPC</PageHeader>
-      <p className="text-gray-subTitle text-14 mb-20 px-20">
-        Once added, the custom RPC will replace Rabby's node. To continue using
-        Rabby's node, delete the custom RPC.
+      <PageHeader
+        className="pt-[24px] mx-[20px] mb-16"
+        canBack={false}
+        closeable
+        onClose={() => {
+          if (history.length > 1) {
+            history.goBack();
+          } else {
+            history.replace('/');
+          }
+        }}
+      >
+        {t('page.customRpc.title')}
+      </PageHeader>
+      <p className="text-r-neutral-body text-[13px] mb-20 px-20">
+        {t('page.customRpc.desc')}
       </p>
       {rpcList.length <= 0 ? (
         NoAddressUI
       ) : (
         <RPCListContainer>
           {rpcList.map((rpc) => (
-            <RPCItem item={rpc} onEdit={handleEditRPC} />
+            <RPCItemComp item={rpc} onEdit={handleEditRPC} key={rpc.id} />
           ))}
         </RPCListContainer>
       )}
       <Footer>
-        <Button
-          size="large"
-          type="primary"
-          className="w-[172px]"
-          onClick={handleClickAdd}
-        >
-          Add RPC
+        <Button size="large" type="primary" block onClick={handleClickAdd}>
+          {t('page.customRpc.add')}
         </Button>
       </Footer>
       <ChainSelectorModal
@@ -264,6 +345,7 @@ const CustomRPC = () => {
         onChange={handleChainChanged}
         onCancel={handleCancelSelectChain}
         showRPCStatus
+        hideTestnetTab
       />
       <EditRPCModal
         visible={rpcModalVisible}

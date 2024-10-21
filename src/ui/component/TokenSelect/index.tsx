@@ -1,20 +1,20 @@
-import React, {
-  ComponentProps,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { Input, Skeleton, Space } from 'antd';
-import cloneDeep from 'lodash/cloneDeep';
-import BigNumber from 'bignumber.js';
+import React, { ComponentProps, useMemo, useState, useEffect } from 'react';
+import { Input, Skeleton } from 'antd';
 import { TokenItem } from 'background/service/openapi';
-import { useWallet } from 'ui/utils';
+import { abstractTokenToTokenItem, getTokenSymbol } from 'ui/utils/token';
 import TokenWithChain from '../TokenWithChain';
 import TokenSelector, { isSwapTokenType } from '../TokenSelector';
 import styled from 'styled-components';
 import LessPalette, { ellipsis } from '@/ui/style/var-defs';
 import { ReactComponent as SvgIconArrowDownTriangle } from '@/ui/assets/swap/arrow-caret-down2.svg';
+import { useTokens } from '@/ui/utils/portfolio/token';
+import { useRabbySelector } from '@/ui/store';
+import { uniqBy } from 'lodash';
+import { SWAP_SUPPORT_CHAINS } from '@/constant';
+import useSearchToken from '@/ui/hooks/useSearchToken';
+import useSortToken from '@/ui/hooks/useSortTokens';
+import { useAsync } from 'react-use';
+import { useWallet } from '@/ui/utils';
 
 const Wrapper = styled.div`
   background-color: transparent;
@@ -52,140 +52,154 @@ const Text = styled.span`
   ${ellipsis()}
 `;
 
-interface TokenAmountInputProps {
+export interface TokenSelectProps {
   token?: TokenItem;
   onChange?(amount: string): void;
   onTokenChange(token: TokenItem): void;
   chainId: string;
+  useSwapTokenList?: boolean;
   excludeTokens?: TokenItem['id'][];
   type?: ComponentProps<typeof TokenSelector>['type'];
   placeholder?: string;
   hideChainIcon?: boolean;
   value?: string;
   loading?: boolean;
+  tokenRender?:
+    | (({
+        token,
+        openTokenModal,
+      }: {
+        token?: TokenItem;
+        openTokenModal: () => void;
+      }) => React.ReactNode)
+    | React.ReactNode;
 }
+
+const defaultExcludeTokens = [];
 
 const TokenSelect = ({
   token,
   onChange,
   onTokenChange,
   chainId,
-  excludeTokens = [],
+  excludeTokens = defaultExcludeTokens,
   type = 'default',
   placeholder,
   hideChainIcon = true,
   value,
   loading = false,
-}: TokenAmountInputProps) => {
-  const latestChainId = useRef(chainId);
-  const [tokens, setTokens] = useState<TokenItem[]>([]);
-  const [originTokenList, setOriginTokenList] = useState<TokenItem[]>([]);
-  const [isListLoading, setIsListLoading] = useState(true);
+  tokenRender,
+  useSwapTokenList = false,
+}: TokenSelectProps) => {
+  const [queryConds, setQueryConds] = useState({
+    keyword: '',
+    chainServerId: chainId,
+  });
   const [tokenSelectorVisible, setTokenSelectorVisible] = useState(false);
+  const [updateNonce, setUpdateNonce] = useState(0);
+  const currentAccount = useRabbySelector(
+    (state) => state.account.currentAccount
+  );
   const wallet = useWallet();
-
-  const isSwapType = isSwapTokenType(type);
 
   const handleCurrentTokenChange = (token: TokenItem) => {
     onChange && onChange('');
     onTokenChange(token);
     setTokenSelectorVisible(false);
+
+    // const chainItem = findChainByServerID(token.chain);
+    setQueryConds((prev) => ({ ...prev, chainServerId: token.chain }));
   };
 
   const handleTokenSelectorClose = () => {
     setTokenSelectorVisible(false);
+    setQueryConds((prev) => ({
+      ...prev,
+      chainServerId: chainId,
+    }));
   };
 
   const handleSelectToken = () => {
+    if (allDisplayTokens.length > 0) {
+      setUpdateNonce(updateNonce + 1);
+    }
     setTokenSelectorVisible(true);
-    handleLoadTokens();
   };
 
-  const sortTokensByPrice = (tokens: TokenItem[]) => {
-    const copy = cloneDeep(tokens);
-    return copy.sort((a, b) => {
-      return new BigNumber(b.amount)
-        .times(new BigNumber(b.price || 0))
-        .minus(new BigNumber(a.amount).times(new BigNumber(a.price || 0)))
-        .toNumber();
-    });
-  };
+  const isSwapType = isSwapTokenType(type);
 
-  const handleLoadTokens = async () => {
-    setIsListLoading(true);
-    let tokens: TokenItem[] = [];
-    const currentAccount = await wallet.syncGetCurrentAccount();
-    const getDefaultTokens = isSwapType
-      ? wallet.openapi.getSwapTokenList
-      : wallet.openapi.listToken;
-
-    const currentAddress = currentAccount?.address || '';
-    const defaultTokens = await getDefaultTokens(currentAddress, chainId);
-    let localAddedTokens: TokenItem[] = [];
-
-    if (!isSwapType) {
-      const localAdded =
-        (await wallet.getAddedToken(currentAddress)).filter((item) => {
-          const [chain] = item.split(':');
-          return chain === chainId;
-        }) || [];
-      if (localAdded.length > 0) {
-        localAddedTokens = await wallet.openapi.customListToken(
-          localAdded,
-          currentAddress
-        );
-      }
-    }
-
-    if (chainId !== latestChainId.current) return;
-    tokens = sortTokensByPrice([
-      ...defaultTokens,
-      ...localAddedTokens,
-    ]).filter((e) => (type === 'swapFrom' ? e.amount > 0 : true));
-    setOriginTokenList(tokens);
-    setTokens(tokens);
-    setIsListLoading(false);
-  };
-
-  const handleSearchTokens = async (q: string) => {
-    if (!q) {
-      setTokens(originTokenList);
-      return;
-    }
-    const kw = q.trim();
-    if (isSwapType) {
-      setIsListLoading(true);
-      try {
-        const currentAccount = await wallet.syncGetCurrentAccount();
-        const data = await wallet.openapi.searchSwapToken(
-          currentAccount!.address,
-          chainId,
-          q
-        );
-        setTokens(data);
-      } catch (error) {
-        console.error('swap search error :', error);
-      }
-      setIsListLoading(false);
-
-      return;
-    }
-    setTokens(
-      originTokenList.filter((token) => {
-        if (kw.length === 42 && kw.startsWith('0x')) {
-          return token.id.toLowerCase() === kw.toLowerCase();
-        } else {
-          const reg = new RegExp(kw, 'i');
-          return reg.test(token.name) || reg.test(token.symbol);
-        }
-      })
-    );
-  };
-
-  const availableToken = useMemo(
-    () => tokens.filter((e) => !excludeTokens.includes(e.id)),
-    [excludeTokens, tokens]
+  // when no any queryConds
+  const { tokens: allTokens, isLoading: isLoadingAllTokens } = useTokens(
+    useSwapTokenList ? undefined : currentAccount?.address,
+    undefined,
+    tokenSelectorVisible,
+    updateNonce,
+    queryConds.chainServerId
   );
+
+  const {
+    value: swapTokenList,
+    loading: swapTokenListLoading,
+  } = useAsync(async () => {
+    if (!currentAccount || !useSwapTokenList || !tokenSelectorVisible)
+      return [];
+    const list = await wallet.openapi.getSwapTokenList(
+      currentAccount.address,
+      queryConds.chainServerId ? queryConds.chainServerId : undefined
+    );
+    return list;
+  }, [
+    queryConds.chainServerId,
+    currentAccount,
+    useSwapTokenList,
+    tokenSelectorVisible,
+  ]);
+
+  const allDisplayTokens = useMemo(() => {
+    if (useSwapTokenList) return swapTokenList || [];
+    return allTokens.map(abstractTokenToTokenItem);
+  }, [allTokens, swapTokenList, useSwapTokenList]);
+
+  const {
+    isLoading: isSearchLoading,
+    list: searchedTokenByQuery,
+  } = useSearchToken(
+    currentAccount?.address,
+    queryConds.keyword,
+    queryConds.chainServerId,
+    isSwapType ? false : true
+  );
+
+  const availableToken = useMemo(() => {
+    const allTokens = queryConds.chainServerId
+      ? allDisplayTokens.filter(
+          (token) => token.chain === queryConds.chainServerId
+        )
+      : allDisplayTokens;
+    return uniqBy(
+      queryConds.keyword
+        ? searchedTokenByQuery.map(abstractTokenToTokenItem)
+        : allTokens,
+      (token) => {
+        return `${token.chain}-${token.id}`;
+      }
+    ).filter((e) => !excludeTokens.includes(e.id));
+  }, [allDisplayTokens, searchedTokenByQuery, excludeTokens, queryConds]);
+
+  const displayTokenList = useSortToken(availableToken);
+
+  const isListLoading = queryConds.keyword
+    ? isSearchLoading
+    : useSwapTokenList
+    ? swapTokenListLoading
+    : isLoadingAllTokens;
+
+  const handleSearchTokens = React.useCallback(async (ctx) => {
+    setQueryConds({
+      keyword: ctx.keyword,
+      chainServerId: ctx.chainServerId,
+    });
+  }, []);
 
   const [input, setInput] = useState('');
 
@@ -199,10 +213,34 @@ const TokenSelect = ({
   };
 
   useEffect(() => {
-    setTokens([]);
-    setOriginTokenList([]);
-    latestChainId.current = chainId;
+    setQueryConds((prev) => ({
+      ...prev,
+      chainServerId: chainId,
+    }));
   }, [chainId]);
+
+  if (tokenRender) {
+    return (
+      <>
+        {typeof tokenRender === 'function'
+          ? tokenRender?.({ token, openTokenModal: handleSelectToken })
+          : tokenRender}
+        <TokenSelector
+          visible={tokenSelectorVisible}
+          list={displayTokenList}
+          onConfirm={handleCurrentTokenChange}
+          onCancel={handleTokenSelectorClose}
+          onSearch={handleSearchTokens}
+          isLoading={isListLoading}
+          type={type}
+          placeholder={placeholder}
+          chainId={queryConds.chainServerId}
+          disabledTips={'Not supported'}
+          supportChains={SWAP_SUPPORT_CHAINS}
+        />
+      </>
+    );
+  }
 
   return (
     <>
@@ -217,7 +255,7 @@ const TokenSelect = ({
                 hideConer
                 hideChainIcon={hideChainIcon}
               />
-              <Text title={token.symbol}>{token.symbol}</Text>
+              <Text title={getTokenSymbol(token)}>{getTokenSymbol(token)}</Text>
               <SvgIconArrowDownTriangle className="ml-[3px]" />
             </TokenWrapper>
           ) : (
@@ -250,14 +288,16 @@ const TokenSelect = ({
       </Wrapper>
       <TokenSelector
         visible={tokenSelectorVisible}
-        list={availableToken}
+        list={displayTokenList}
         onConfirm={handleCurrentTokenChange}
         onCancel={handleTokenSelectorClose}
         onSearch={handleSearchTokens}
         isLoading={isListLoading}
         type={type}
         placeholder={placeholder}
-        chainId={chainId}
+        chainId={queryConds.chainServerId}
+        disabledTips={'Not supported'}
+        supportChains={SWAP_SUPPORT_CHAINS}
       />
     </>
   );
@@ -284,7 +324,7 @@ const SelectTips = styled.div`
   width: 150px;
   height: 32px;
   color: #fff;
-  background: #8697ff;
+  background: var(--r-blue-default, #7084ff);
   border-radius: 4px;
   font-weight: 500;
   font-size: 20px;

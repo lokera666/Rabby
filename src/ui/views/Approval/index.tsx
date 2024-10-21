@@ -3,12 +3,15 @@ import { useHistory } from 'react-router-dom';
 import { Approval } from 'background/service/notification';
 import { useWallet, useApproval } from 'ui/utils';
 import { IExtractFromPromise } from '@/ui/utils/type';
-
+import { ApprovalUtilsProvider } from './hooks/useApprovalUtils';
 import * as ApprovalComponent from './components';
 
 import './style.less';
+import clsx from 'clsx';
 
-const Approval = () => {
+const Approval: React.FC<{
+  className?: string;
+}> = ({ className }) => {
   const history = useHistory();
   // const [account, setAccount] = useState('');
   const wallet = useWallet();
@@ -26,10 +29,7 @@ const Approval = () => {
       return null;
     }
     setApproval(approval);
-    if (approval.data.origin || approval.data.params?.session.origin) {
-      document.title =
-        approval.data.origin || approval.data.params!.session.origin;
-    }
+    document.title = 'Rabby Wallet Notification';
     const account = await wallet.getCurrentAccount();
     if (!account) {
       rejectApproval();
@@ -43,17 +43,19 @@ const Approval = () => {
 
   if (!approval) return <></>;
   const { data } = approval;
-  const { approvalComponent, params, origin, requestDefer } = data;
+  const { approvalComponent, params, origin } = data;
   const CurrentApprovalComponent = ApprovalComponent[approvalComponent];
 
   return (
-    <div className="approval">
+    <div className={clsx('approval', className)}>
       {approval && (
-        <CurrentApprovalComponent
-          params={params}
-          origin={origin}
-          requestDefer={requestDefer}
-        />
+        <ApprovalUtilsProvider>
+          <CurrentApprovalComponent
+            params={params}
+            origin={origin}
+            // requestDefer={requestDefer}
+          />
+        </ApprovalUtilsProvider>
       )}
     </div>
   );

@@ -4,7 +4,7 @@ import { useWallet } from 'ui/utils';
 import { PageHeader } from 'ui/component';
 import FieldCheckbox from 'ui/component/FieldCheckbox';
 import { LANGS } from 'consts';
-import i18n, { addResourceBundle } from 'src/i18n';
+import { addResourceBundle, changeLanguage } from 'src/i18n';
 import './style.less';
 
 const SwitchLang = () => {
@@ -16,7 +16,7 @@ const SwitchLang = () => {
       setLang(value);
       await wallet.setLocale(value);
       await addResourceBundle(value);
-      i18n.changeLanguage(value);
+      changeLanguage(value);
     }
   };
 
@@ -34,11 +34,11 @@ const SwitchLang = () => {
       <PageHeader>{t('Languages')}</PageHeader>
       {LANGS.map((current) => (
         <FieldCheckbox
-          leftIcon={<img src={current.icon} className="icon-lang" />}
-          checked={current.value === lang}
-          onChange={(checked) => handleSwitchLang(checked, current.value)}
+          // leftIcon={<img src={current.icon} className="icon-lang" />}
+          checked={current.code === lang}
+          onChange={(checked) => handleSwitchLang(checked, current.code)}
         >
-          {current.label}
+          {current.name}
         </FieldCheckbox>
       ))}
     </div>

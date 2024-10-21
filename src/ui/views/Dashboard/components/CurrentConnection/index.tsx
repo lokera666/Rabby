@@ -11,6 +11,8 @@ import { getCurrentTab, useWallet } from 'ui/utils';
 import './style.less';
 import { useLocation } from 'react-router-dom';
 import { getOriginFromUrl } from '@/utils';
+import IconMetamaskBadge from 'ui/assets/dashboard/icon-metamask-badge.svg';
+import { useRequest } from 'ahooks';
 import { matomoRequestEvent } from '@/utils/matomo-request';
 
 interface CurrentConnectionProps {
@@ -26,6 +28,10 @@ export const CurrentConnection = memo((props: CurrentConnectionProps) => {
     showChainsModal?: boolean;
   }>();
   const { showChainsModal = false, trigger } = state ?? {};
+
+  const { data: hasOtherProvider } = useRequest(() =>
+    wallet.getHasOtherProvider()
+  );
 
   const [visible, setVisible] = useState(
     trigger === 'current-connection' && showChainsModal
@@ -44,7 +50,11 @@ export const CurrentConnection = memo((props: CurrentConnectionProps) => {
     getCurrentSite();
     message.success({
       icon: <i />,
-      content: <span className="text-white">{t('Disconnected')}</span>,
+      content: (
+        <span className="text-white">
+          {t('page.dashboard.recentConnection.disconnected')}
+        </span>
+      ),
     });
   };
 
@@ -61,7 +71,7 @@ export const CurrentConnection = memo((props: CurrentConnectionProps) => {
     if (rpc) {
       const avaliable = await wallet.pingCustomRPC(chain);
       if (!avaliable) {
-        message.error('The custom RPC is unavailable');
+        message.error(t('page.dashboard.recentConnection.rpcUnavailable'));
       }
     }
   };
@@ -72,18 +82,45 @@ export const CurrentConnection = memo((props: CurrentConnectionProps) => {
 
   const Content = site && (
     <div className="site mr-[18px]">
-      <FallbackSiteLogo
-        url={site.icon}
-        origin={site.origin}
-        width="28px"
-        className="site-icon"
-      ></FallbackSiteLogo>
+      {site?.preferMetamask && hasOtherProvider ? (
+        <Tooltip
+          placement="topLeft"
+          overlayClassName="rectangle prefer-metamask-tooltip"
+          align={{
+            offset: [-12, -4],
+          }}
+          title={t('page.dashboard.recentConnection.metamaskTooltip')}
+        >
+          <div className="relative">
+            <img
+              src={IconMetamaskBadge}
+              alt=""
+              className="prefer-metamask-badge"
+            />
+            <FallbackSiteLogo
+              url={site.icon}
+              origin={site.origin}
+              width="28px"
+              className="site-icon"
+            ></FallbackSiteLogo>
+          </div>
+        </Tooltip>
+      ) : (
+        <FallbackSiteLogo
+          url={site.icon}
+          origin={site.origin}
+          width="28px"
+          className="site-icon"
+        ></FallbackSiteLogo>
+      )}
       <div className="site-content">
         <div className="site-name" title={site?.origin}>
           {site?.origin}
         </div>
         <div className={clsx('site-status', site?.isConnected && 'active')}>
-          {site?.isConnected ? 'Connected' : 'Not connected'}
+          {site?.isConnected
+            ? t('page.dashboard.recentConnection.connected')
+            : t('page.dashboard.recentConnection.notConnected')}
           <img
             src={IconDisconnect}
             className="site-status-icon"
@@ -96,9 +133,9 @@ export const CurrentConnection = memo((props: CurrentConnectionProps) => {
   );
 
   return (
-    <div className={clsx('current-connection-block')}>
+    <div className={clsx('current-connection-block h-[52px]')}>
       {site ? (
-        site.isConnected ? (
+        site.isConnected || (site.preferMetamask && hasOtherProvider) ? (
           Content
         ) : (
           <Tooltip
@@ -107,19 +144,23 @@ export const CurrentConnection = memo((props: CurrentConnectionProps) => {
             align={{
               offset: [-12, -15],
             }}
-            title="Rabby is not connected to the current Dapp.To connect, find and click the connect button on the Dapp’s webpage."
+            title={t('page.dashboard.recentConnection.connectedDapp')}
           >
             {Content}
           </Tooltip>
         )
       ) : (
         <div className="site is-empty">
-          <img src={IconDapps} className="site-icon" alt="" />
-          <div className="site-content">No Dapp found, refresh web page</div>
+          <img src={IconDapps} className="site-icon ml-6" alt="" />
+          <div className="site-content">
+            {t('page.dashboard.recentConnection.noDappFound')}
+          </div>
         </div>
       )}
       <ChainSelector
-        className={clsx(!site && 'disabled')}
+        className={clsx(!site && 'disabled', {
+          'mr-[20px]': hasOtherProvider,
+        })}
         value={site?.chain || CHAINS_ENUM.ETH}
         onChange={handleChangeDefaultChain}
         showModal={visible}

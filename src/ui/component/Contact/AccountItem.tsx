@@ -1,21 +1,24 @@
 import React, { useMemo, useRef } from 'react';
 import styled from 'styled-components';
-import ClipboardJS from 'clipboard';
 import clsx from 'clsx';
 import { message, Tooltip } from 'antd';
 import { ellipsis } from 'ui/utils/address';
 import { IDisplayedAccountWithBalance } from 'ui/models/accountToDisplay';
 import { splitNumberByStep } from 'ui/utils/number';
 import { WALLET_BRAND_CONTENT, KEYRING_ICONS } from 'consts';
-import IconSuccess from 'ui/assets/success.svg';
-import IconCopy from 'ui/assets/component/icon-copy.svg';
-import IconWhitelist from 'ui/assets/address/whitelist.svg';
+import { ReactComponent as RcIconWhitelist } from 'ui/assets/address/whitelist.svg';
 import { useRabbySelector } from '@/ui/store';
 import { isSameAddress } from '@/ui/utils';
+import { copyAddress } from '@/ui/utils/clipboard';
+import { CopyChecked } from '../CopyChecked';
+import { useTranslation } from 'react-i18next';
+import ThemeIcon from '../ThemeMode/ThemeIcon';
+import { useThemeMode } from '@/ui/hooks/usePreference';
+import { pickKeyringThemeIcon } from '@/utils/account';
 
 const AccountItemWrapper = styled.div`
   padding: 10px 16px;
-  background-color: #f5f6fa;
+  background: var(--r-neutral-card-2, rgba(255, 255, 255, 0.06));
   border-radius: 6px;
   margin-bottom: 8px;
   display: flex;
@@ -24,8 +27,8 @@ const AccountItemWrapper = styled.div`
   border: 1px solid transparent;
 
   &:hover {
-    background-color: rgba(134, 151, 255, 0.1);
-    border-color: #8697ff;
+    background-color: var(--r-blue-light-1, #eef1ff);
+    border-color: var(--r-blue-default, #7084ff);
   }
   .name {
     font-weight: 500;
@@ -53,11 +56,22 @@ const AccountItemWrapper = styled.div`
     margin-bottom: 0;
   }
   &.disabled {
-    opacity: 0.5;
     cursor: not-allowed;
+    background: var(--r-neutral-card-2, rgba(255, 255, 255, 0.06));
     &:hover {
-      background-color: f5f6fa;
       border-color: transparent;
+    }
+    &:not(.is-darkmode):hover {
+      background-color: #f5f6fa;
+    }
+
+    & > *,
+    .account-info .name,
+    .account-info .addr {
+      opacity: 0.5;
+    }
+    & > .account-info {
+      opacity: 1;
     }
   }
 `;
@@ -76,79 +90,74 @@ const AccountItem = ({
     whiteList: s.whitelist.whitelist,
   }));
 
+  const { t } = useTranslation();
+
   const isInWhiteList = useMemo(() => {
     return whiteList.some((e) => isSameAddress(e, account.address));
   }, [whiteList, account.address]);
 
   const addressElement = useRef(null);
   const handleClickCopy = (e: React.MouseEvent<HTMLImageElement>) => {
-    if (disabled) return;
     e.stopPropagation();
-    const clipboard = new ClipboardJS(addressElement.current!, {
-      text: function () {
-        return account.address;
-      },
-    });
-    clipboard.on('success', () => {
-      message.success({
-        duration: 3,
-        icon: <i />,
-        content: (
-          <div>
-            <div className="flex gap-4 mb-4">
-              <img src={IconSuccess} alt="" />
-              Copied
-            </div>
-            <div className="text-white">{account.address}</div>
-          </div>
-        ),
-      });
-      clipboard.destroy();
-    });
+    copyAddress(account.address);
   };
   const handleClickItem = () => {
     if (disabled) {
-      message.error('This address is not whitelisted');
+      message.error(t('component.Contact.AddressItem.notWhitelisted'));
       return;
     }
 
     onClick && onClick(account);
   };
+
+  const { isDarkTheme } = useThemeMode();
+
   return (
     <AccountItemWrapper
-      className={clsx({ disabled, 'cursor-pointer': !disabled && onClick })}
+      className={clsx({
+        disabled,
+        'cursor-pointer': !disabled && onClick,
+        'is-darkmode': isDarkTheme,
+      })}
       onClick={handleClickItem}
     >
-      <img
+      <ThemeIcon
         className="icon icon-account-type w-[24px] h-[24px]"
         src={
+          pickKeyringThemeIcon(account.brandName as any, isDarkTheme) ||
           WALLET_BRAND_CONTENT[account.brandName]?.image ||
+          pickKeyringThemeIcon(account.type as any, isDarkTheme) ||
           KEYRING_ICONS[account.type]
         }
       />
       <div className="account-info flex-1">
         <p className="name">
           <div className="flex items-center gap-4">
-            <span>{account.alianName}</span>
+            <span className="inline-block max-w-[180px] overflow-hidden overflow-ellipsis whitespace-nowrap text-r-neutral-title-1">
+              {account.alianName}
+            </span>
             {onClick && whitelistEnable && isInWhiteList && (
               <Tooltip
                 overlayClassName="rectangle"
                 placement="top"
-                title={'Whitelisted address'}
+                title={t('component.Contact.AddressItem.whitelistedTip')}
               >
-                <img src={IconWhitelist} className={'w-14 h-14'} />
+                <ThemeIcon src={RcIconWhitelist} className={'w-14 h-14'} />
               </Tooltip>
             )}
           </div>
         </p>
-        <p className="address" title={account.address} ref={addressElement}>
-          {ellipsis(account.address)}
-          <div className="cursor-pointer" onClick={handleClickCopy}>
-            <img className="icon icon-copy" src={IconCopy} />
-          </div>
+        <p
+          className="address text-r-neutral-body"
+          title={account.address}
+          ref={addressElement}
+        >
+          <div className="addr">{ellipsis(account.address)}</div>
+
+          <CopyChecked addr={account.address} className="icon icon-copy" />
         </p>
       </div>
-      <p className="text-13 text-gray-title mb-0">
+      <p className="text-13 text-r-neutral-title-1 mb-0">
         ${splitNumberByStep(Math.floor(account.balance))}
       </p>
     </AccountItemWrapper>

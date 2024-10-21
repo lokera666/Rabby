@@ -6,6 +6,7 @@ import { getUpdateContent } from 'changeLogs/index';
 type IState = {
   firstNotice: boolean;
   updateContent: string;
+  version: string;
 };
 
 /**
@@ -16,6 +17,7 @@ export const appVersion = createModel<RootModel>()({
   state: <IState>{
     firstNotice: false,
     updateContent: '',
+    version: '',
   },
   reducers: {
     setField(state, payload: Partial<typeof state>) {
@@ -29,10 +31,34 @@ export const appVersion = createModel<RootModel>()({
     },
   },
   effects: (dispatch) => ({
-    async checkIfFirstLoginAsync(_?, store?) {
+    async checkIfFirstLoginAsync(_: void, store) {
       const firstOpen = await store.app.wallet.getIsFirstOpen();
-      const updateContent = await getUpdateContent();
+      let updateContent = await getUpdateContent();
+
+      const locale = store.preference?.locale || 'en';
+      const version = process.env.release || '0';
+      const versionMd = `${version.replace(/\./g, '')}.md`;
+
+      const path = locale !== 'en' ? `${locale}/${versionMd}` : versionMd;
+
+      try {
+        // https://webpack.js.org/api/module-methods/#magic-comments
+        const data = await import(
+          /* webpackInclude: /\.md$/ */
+          /* webpackMode: "lazy" */
+          /* webpackPrefetch: true */
+          /* webpackPreload: true */
+          `changeLogs/${path}`
+        );
+        if (data.default && typeof data.default === 'string') {
+          updateContent = data.default;
+        }
+      } catch (error) {
+        console.error('Changelog loading error', error);
+      }
+
       dispatch.appVersion.setField({
+        version,
         updateContent,
         ...(firstOpen &&
           updateContent && {
@@ -41,7 +67,7 @@ export const appVersion = createModel<RootModel>()({
       });
     },
 
-    async afterFirstLogin(_?: void, store?) {
+    async afterFirstLogin(_: void, store) {
       store.app.wallet.updateIsFirstOpen();
       dispatch.appVersion.setField({ firstNotice: false });
     },

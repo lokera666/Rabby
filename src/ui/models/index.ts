@@ -1,4 +1,4 @@
-import { Models } from '@rematch/core';
+import { Models, RematchDispatch, RematchRootState } from '@rematch/core';
 
 import { app } from './app';
 import { appVersion } from './appVersion';
@@ -16,6 +16,10 @@ import { chains } from './chains';
 import { whitelist } from './whitelist';
 import { swap } from './swap';
 import { customRPC } from './customRPC';
+import { securityEngine } from './securityEngine';
+import { sign } from './sign';
+import { bridge } from './bridge';
+import { gasAccount } from './gasAccount';
 
 export interface RootModel extends Models<RootModel> {
   app: typeof app;
@@ -34,6 +38,10 @@ export interface RootModel extends Models<RootModel> {
   whitelist: typeof whitelist;
   swap: typeof swap;
   customRPC: typeof customRPC;
+  securityEngine: typeof securityEngine;
+  sign: typeof sign;
+  bridge: typeof bridge;
+  gasAccount: typeof gasAccount;
 }
 
 export const models: RootModel = {
@@ -53,4 +61,11 @@ export const models: RootModel = {
   whitelist,
   swap,
   customRPC,
+  securityEngine,
+  sign,
+  bridge,
+  gasAccount,
 };
+
+export type RabbyDispatch = RematchDispatch<RootModel>;
+export type RabbyRootState = RematchRootState<RootModel>;

@@ -10,6 +10,7 @@ import IconCopy from 'ui/assets/copy-gray.svg';
 import IconSuccess from 'ui/assets/success.svg';
 import './style.less';
 import { Account } from '@/background/service/preference';
+import { INTERNAL_REQUEST_ORIGIN } from '@/constant';
 
 const SignedTextHistoryItem = ({ item }: { item: SignTextHistoryItem }) => {
   const { t } = useTranslation();
@@ -35,7 +36,7 @@ const SignedTextHistoryItem = ({ item }: { item: SignTextHistoryItem }) => {
     clipboard.on('success', () => {
       message.success({
         icon: <img src={IconSuccess} className="icon icon-success" />,
-        content: t('Copied'),
+        content: t('global.copied'),
         duration: 0.5,
       });
       clipboard.destroy();
@@ -58,18 +59,26 @@ const SignedTextHistoryItem = ({ item }: { item: SignTextHistoryItem }) => {
       </div>
       <div className="text-history__item--footer">
         <div className="site">
-          <FallbackSiteLogo
-            url={item.site.icon}
-            origin={item.site.origin}
-            width="14px"
-            height="14px"
-            style={{
-              borderRadius: '2px',
-            }}
-          />
-          <div className="link" onClick={() => handleClickLink(item)}>
-            {item.site.origin}
-          </div>
+          {item.site?.origin === INTERNAL_REQUEST_ORIGIN ? (
+            <span className="flex-1 whitespace-nowrap overflow-ellipsis overflow-hidden text-r-neutral-foot text-12">
+              Rabby Wallet
+            </span>
+          ) : (
+            <>
+              <FallbackSiteLogo
+                url={item.site.icon}
+                origin={item.site.origin}
+                width="14px"
+                height="14px"
+                style={{
+                  borderRadius: '2px',
+                }}
+              />
+              <div className="link" onClick={() => handleClickLink(item)}>
+                {item.site.origin}
+              </div>
+            </>
+          )}
         </div>
         <div className="time">{sinceTime(item.createAt / 1000)}</div>
       </div>
@@ -99,8 +108,8 @@ const SignedTextHistory = () => {
       ))}
       {textHistory.length <= 0 && (
         <Empty
-          title={t('No signed texts yet')}
-          desc={t('All texts signed via Rabby will be listed here.')}
+          title={t('page.activities.signedText.empty.title')}
+          desc={t('page.activities.signedText.empty.desc')}
           className="pt-[108px]"
         ></Empty>
       )}

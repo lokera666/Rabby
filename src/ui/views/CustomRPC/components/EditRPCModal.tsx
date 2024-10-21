@@ -7,6 +7,9 @@ import { useWallet } from 'ui/utils';
 import { CHAINS_ENUM, CHAINS } from 'consts';
 import { Popup, PageHeader } from 'ui/component';
 import { isValidateUrl } from 'ui/utils/url';
+import { RPCItem } from '@/background/service/rpc';
+import { findChainByEnum } from '@/utils/chain';
+import { useTranslation } from 'react-i18next';
 
 const ErrorMsg = styled.div`
   color: #ec5151;
@@ -17,9 +20,9 @@ const ErrorMsg = styled.div`
 `;
 
 const Footer = styled.div`
-  height: 76px;
-  background: #ffffff;
-  border-top: 1px solid #e5e9ef;
+  height: 84px;
+  border-top: 0.5px solid var(--r-neutral-line, rgba(255, 255, 255, 0.1));
+  background: var(--r-neutral-card-1, rgba(255, 255, 255, 0.06));
   padding: 16px 20px;
   display: flex;
   justify-content: space-between;
@@ -32,16 +35,25 @@ const Footer = styled.div`
 const EditRPCWrapped = styled.div`
   position: relative;
   height: 100%;
-  .rpc-input {
+  .rpc-input.rpc-input {
     height: 52px;
-    width: 360px;
+
+    height: 52px;
+    width: 100%;
     margin-left: auto;
     margin-right: auto;
-    background: #f5f6fa;
-    border: 1px solid #e5e9ef;
+    background: transparent !important;
+    border: 1px solid var(--r-neutral-line, #d3d8e0) !important;
     border-radius: 6px;
+
+    color: var(--r-neutral-title1, #192945) !important;
+    font-size: 15px;
+    /* font-weight: 500; */
+    &:focus {
+      border-color: var(--r-blue-default, #7084ff) !important;
+    }
     &.has-error {
-      border-color: #ec5151;
+      border-color: #ec5151 !important;
     }
   }
 `;
@@ -54,47 +66,48 @@ const EditRPCModal = ({
   onConfirm,
 }: {
   chain: CHAINS_ENUM;
-  rpcInfo: { id: CHAINS_ENUM; rpc: string } | null;
+  rpcInfo: { id: CHAINS_ENUM; rpc: RPCItem } | null;
   visible: boolean;
   onCancel(): void;
   onConfirm(url: string): void;
 }) => {
   const wallet = useWallet();
-  const chainInfo = useMemo(() => {
-    return CHAINS[chain];
-  }, [chain]);
+  const chainItem = useMemo(() => findChainByEnum(chain), [chain]);
   const [rpcUrl, setRpcUrl] = useState('');
   const [rpcErrorMsg, setRpcErrorMsg] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   const canSubmit = useMemo(() => {
     return rpcUrl && !rpcErrorMsg && !isValidating;
   }, [rpcUrl, rpcErrorMsg, isValidating]);
+  const { t } = useTranslation();
 
   const inputRef = useRef<Input>(null);
 
   const handleRPCChanged = (url: string) => {
     setRpcUrl(url);
     if (!isValidateUrl(url)) {
-      setRpcErrorMsg('Invalid RPC URL');
+      setRpcErrorMsg(t('page.customRpc.EditRPCModal.invalidRPCUrl'));
     }
   };
 
   const rpcValidation = async () => {
+    if (!chainItem) return;
+
     if (!isValidateUrl(rpcUrl)) {
       return;
     }
     try {
       setIsValidating(true);
-      const isValid = await wallet.validateRPC(rpcUrl, chainInfo.id);
+      const isValid = await wallet.validateRPC(rpcUrl, chainItem.id);
       setIsValidating(false);
       if (!isValid) {
-        setRpcErrorMsg('Invalid Chain ID');
+        setRpcErrorMsg(t('page.customRpc.EditRPCModal.invalidChainId'));
       } else {
         setRpcErrorMsg('');
       }
     } catch (e) {
       setIsValidating(false);
-      setRpcErrorMsg('RPC authentication failed');
+      setRpcErrorMsg(t('page.customRpc.EditRPCModal.rpcAuthFailed'));
     }
   };
 
@@ -102,7 +115,7 @@ const EditRPCModal = ({
 
   useEffect(() => {
     if (rpcInfo) {
-      setRpcUrl(rpcInfo.rpc);
+      setRpcUrl(rpcInfo.rpc.url);
     } else {
       setRpcUrl('');
     }
@@ -129,26 +142,29 @@ const EditRPCModal = ({
       style={{
         zIndex: 1001,
       }}
+      isSupportDarkMode
     >
       <EditRPCWrapped>
         <PageHeader forceShowBack onBack={onCancel} className="pt-0">
-          Edit RPC
+          {t('page.customRpc.EditRPCModal.title')}
         </PageHeader>
         <div className="text-center">
           <img
             className="w-[56px] h-[56px] mx-auto mb-12"
-            src={chainInfo.logo}
+            src={chainItem?.logo || ''}
           />
-          <div className="mb-8 text-20 text-gray-title leading-none">
-            {chainInfo.name}
+          <div className="mb-8 text-20 text-r-neutral-title-1 leading-none">
+            {chainItem?.name}
           </div>
-          <div className="mb-8 text-14 text-gray-title text-left">RPC URL</div>
+          <div className="mb-8 text-14 text-r-neutral-title-1 text-left">
+            {t('page.customRpc.EditRPCModal.rpcUrl')}
+          </div>
         </div>
         <Input
           ref={inputRef}
           className={clsx('rpc-input', { 'has-error': rpcErrorMsg })}
           value={rpcUrl}
-          placeholder="Enter the RPC URL"
+          placeholder={t('page.customRpc.EditRPCModal.rpcUrlPlaceholder')}
           onChange={(e) => handleRPCChanged(e.target.value)}
         />
         {rpcErrorMsg && <ErrorMsg>{rpcErrorMsg}</ErrorMsg>}
@@ -160,7 +176,7 @@ const EditRPCModal = ({
             ghost
             onClick={onCancel}
           >
-            Cancel
+            {t('global.Cancel')}
           </Button>
           <Button
             type="primary"
@@ -170,7 +186,7 @@ const EditRPCModal = ({
             disabled={!canSubmit}
             onClick={() => onConfirm(rpcUrl)}
           >
-            {isValidating ? 'Loading' : 'Save'}
+            {isValidating ? t('global.Loading') : t('global.Save')}
           </Button>
         </Footer>
       </EditRPCWrapped>

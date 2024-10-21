@@ -28,10 +28,12 @@ const AddressDetail = () => {
   };
 
   const { address, type, brandName, byImport } = qs || {};
+
   const source = useAddressSource({
     type,
     brandName,
     byImport: !!byImport,
+    address,
   });
 
   useEffect(() => {
@@ -40,8 +42,10 @@ const AddressDetail = () => {
 
   const handleWhitelistChange = (checked: boolean) => {
     AuthenticationModalPromise({
-      title: checked ? 'Add to Whitelist' : 'Remove from Whitelist',
-      cancelText: 'Cancel',
+      title: checked
+        ? t('page.addressDetail.add-to-whitelist')
+        : t('page.addressDetail.remove-from-whitelist'),
+      cancelText: t('global.Cancel'),
       wallet,
       validationHandler: async (password) => {
         if (checked) {
@@ -51,7 +55,7 @@ const AddressDetail = () => {
         }
       },
       onFinished() {
-        dispatch.whitelist.getWhitelist();
+        // dispatch.whitelist.getWhitelist();
       },
       onCancel() {
         // do nothing
@@ -65,7 +69,9 @@ const AddressDetail = () => {
 
   return (
     <div className="page-address-detail overflow-auto">
-      <PageHeader fixed>{t('Address Detail')}</PageHeader>
+      <PageHeader wrapperClassName="bg-r-neutral-bg-2" fixed>
+        {t('page.addressDetail.address-detail')}
+      </PageHeader>
       <AddressInfo
         address={address}
         type={type}
@@ -76,7 +82,9 @@ const AddressDetail = () => {
       <div className="rabby-list">
         <div className="rabby-list-item">
           <div className="rabby-list-item-content">
-            <div className="rabby-list-item-label">Add to Whitelist</div>
+            <div className="rabby-list-item-label">
+              {t('page.addressDetail.add-to-whitelist')}
+            </div>
             <Switch
               checked={!!whitelist.find((item) => isSameAddress(item, address))}
               onChange={handleWhitelistChange}

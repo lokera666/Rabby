@@ -1,12 +1,14 @@
 import React, { ReactNode, useEffect, useState } from 'react';
-import { CHAINS_ENUM, CHAINS } from 'consts';
+import { CHAINS_ENUM } from 'consts';
 import { useHover, useWallet } from 'ui/utils';
-import { SvgIconArrowDown } from 'ui/assets';
-import Modal from './Modal';
+import { ReactComponent as ArrowDownSVG } from '@/ui/assets/dashboard/arrow-down.svg';
+import ChainSelectorModal from './Modal';
 import ChainIcon from '../ChainIcon';
 
 import './style.less';
 import clsx from 'clsx';
+import { findChainByEnum } from '@/utils/chain';
+import { ChainSelectorPurpose } from '@/ui/hooks/useChain';
 
 interface ChainSelectorProps {
   value: CHAINS_ENUM;
@@ -18,6 +20,7 @@ interface ChainSelectorProps {
   title?: ReactNode;
   onAfterOpen?: () => void;
   showRPCStatus?: boolean;
+  modalHeight?: number;
 }
 
 const ChainSelector = ({
@@ -29,6 +32,7 @@ const ChainSelector = ({
   className = '',
   onAfterOpen,
   showRPCStatus = false,
+  modalHeight,
 }: ChainSelectorProps) => {
   const [showSelectorModal, setShowSelectorModal] = useState(showModal);
   const [isHovering, hoverProps] = useHover();
@@ -51,7 +55,7 @@ const ChainSelector = ({
 
   const getCustomRPC = async () => {
     const rpc = await wallet.getCustomRpcByChain(value);
-    setCustomRPC(rpc);
+    setCustomRPC(rpc?.enable ? rpc.url : '');
   };
 
   useEffect(() => {
@@ -61,11 +65,7 @@ const ChainSelector = ({
   return (
     <>
       <div
-        className={clsx(
-          'chain-selector',
-          className,
-          !className && isHovering && 'hover'
-        )}
+        className={clsx('chain-selector', className, isHovering && 'hover')}
         onClick={handleClickSelector}
         {...hoverProps}
       >
@@ -77,10 +77,12 @@ const ChainSelector = ({
             showCustomRPCToolTip
           />
         </div>
-        {CHAINS[value]?.name}
-        <SvgIconArrowDown className={clsx('icon icon-arrow-down arrowColor')} />
+        <span className="flex-1 whitespace-nowrap overflow-hidden overflow-ellipsis">
+          {findChainByEnum(value)?.name}
+        </span>
+        <ArrowDownSVG className={clsx('icon')} />
       </div>
-      <Modal
+      <ChainSelectorModal
         title={title}
         value={value}
         visible={showSelectorModal}
@@ -88,6 +90,7 @@ const ChainSelector = ({
         onCancel={handleCancel}
         connection={connection}
         showRPCStatus={showRPCStatus}
+        height={modalHeight}
       />
     </>
   );

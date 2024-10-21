@@ -4,13 +4,9 @@ import providerController from '../controller/provider/controller';
 import preferenceService from 'background/service/preference';
 import notificationService from 'background/service/notification';
 import wallet from '../controller/wallet';
-import {
-  CHAINS,
-  INTERNAL_REQUEST_SESSION,
-  KEYRING_CLASS,
-  CHAINS_ENUM,
-} from 'consts';
+import { CHAINS, INTERNAL_REQUEST_SESSION, CHAINS_ENUM } from 'consts';
 import { underline2Camelcase } from 'background/utils';
+import { findChain } from '@/utils/chain';
 
 interface StateProvider {
   accounts: string[] | null;
@@ -81,15 +77,14 @@ export class EthereumProvider extends EventEmitter {
     };
     const mapMethod = underline2Camelcase(method);
     const currentAccount = preferenceService.getCurrentAccount()!;
-    let networkId = CHAINS[CHAINS_ENUM.ETH].id.toString();
-    if (currentAccount.type === KEYRING_CLASS.GNOSIS) {
-      networkId = wallet.getGnosisNetworkId(currentAccount.address);
-    } else {
-      networkId = this.chainId!;
+    const networkId = this.chainId || CHAINS[CHAINS_ENUM.ETH].id.toString();
+
+    const chain = findChain({
+      networkId: networkId,
+    });
+    if (!chain) {
+      throw new Error('chain not found');
     }
-    const chain = Object.values(CHAINS).find(
-      (item) => item.id.toString() === networkId
-    )!;
     if (!providerController[mapMethod]) {
       // TODO: make rpc whitelist
       if (method.startsWith('eth_') || method === 'net_version') {
@@ -213,7 +208,7 @@ export class EthereumProvider extends EventEmitter {
 
 const provider = new EthereumProvider();
 
-window.dispatchEvent(new Event('ethereum#initialized'));
+// window.dispatchEvent(new Event('ethereum#initialized'));
 
 export default {
   currentProvider: new Proxy(provider, {

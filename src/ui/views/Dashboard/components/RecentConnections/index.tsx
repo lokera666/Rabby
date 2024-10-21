@@ -1,13 +1,15 @@
-import { Empty, Modal, Popup } from '@/ui/component';
-import { message } from 'antd';
+import { Empty, Modal, PageHeader, Popup } from '@/ui/component';
+import { Button, message } from 'antd';
 import { ConnectedSite } from 'background/service/permission';
 import React, { useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { matomoRequestEvent } from '@/utils/matomo-request';
 import { openInTab, useWallet } from 'ui/utils';
 import ConnectionList from './ConnectionList';
 import './style.less';
 import { useRabbyDispatch, useRabbySelector } from 'ui/store';
+import clsx from 'clsx';
+import { SvgIconCross } from '@/ui/assets';
 
 interface RecentConnectionsProps {
   visible?: boolean;
@@ -21,6 +23,10 @@ const RecentConnections = ({
   const { t } = useTranslation();
   const dispatch = useRabbyDispatch();
   const connections = useRabbySelector((state) => state.permission.websites);
+
+  const list = useMemo(() => {
+    return connections.sort((a, b) => (a.order || 0) - (b.order || 0));
+  }, [connections]);
 
   const pinnedList = useMemo(() => {
     return connections
@@ -43,26 +49,11 @@ const RecentConnections = ({
     openInTab(connection.origin);
   };
 
-  const handleSort = (sites: ConnectedSite[]) => {
-    const list = sites.concat(recentList);
-    dispatch.permission.reorderWebsites(list);
-  };
-
-  const handleFavoriteChange = (item: ConnectedSite) => {
+  const handlePinChange = (item: ConnectedSite) => {
     if (item.isTop) {
-      dispatch.permission.unFavoriteWebsite(item.origin);
-      matomoRequestEvent({
-        category: 'Dapps',
-        action: 'unfavoriteDapp',
-        label: item.origin,
-      });
+      dispatch.permission.unpinWebsite(item.origin);
     } else {
-      dispatch.permission.favoriteWebsite(item.origin);
-      matomoRequestEvent({
-        category: 'Dapps',
-        action: 'favoriteDapp',
-        label: item.origin,
-      });
+      dispatch.permission.pinWebsite(item.origin);
     }
   };
   const handleRemove = async (origin: string) => {
@@ -74,7 +65,11 @@ const RecentConnections = ({
     });
     message.success({
       icon: <i />,
-      content: <span className="text-white">{t('Disconnected')}</span>,
+      content: (
+        <span className="text-white">
+          {t('page.dashboard.recentConnection.disconnected')}
+        </span>
+      ),
     });
   };
 
@@ -90,7 +85,11 @@ const RecentConnections = ({
     }
     message.success({
       icon: <i />,
-      content: <span className="text-white">{t('Disconnected')}</span>,
+      content: (
+        <span className="text-white">
+          {t('page.dashboard.recentConnection.disconnected')}
+        </span>
+      ),
     });
   };
 
@@ -99,16 +98,21 @@ const RecentConnections = ({
       className: 'recent-connections-confirm-modal',
       centered: true,
       closable: true,
-      okText: t('Disconnect All'),
-      width: 320,
+      okText: t('global.Confirm'),
+      width: 360,
       onOk: removeAll,
       autoFocusButton: null,
+      closeIcon: (
+        <SvgIconCross className="w-14 fill-current text-r-neutral-body" />
+      ),
       content: (
         <div>
           <div className="title">
-            Disconnect recently used <strong>{recentList.length}</strong> DApps
+            <Trans
+              count={recentList.length}
+              i18nKey="page.dashboard.recentConnection.disconnectRecentlyUsed.title"
+            ></Trans>
           </div>
-          <div className="desc">Pinned DApps will remain connected</div>
         </div>
       ),
     });
@@ -117,51 +121,77 @@ const RecentConnections = ({
   useEffect(() => {
     dispatch.permission.getWebsites();
   }, []);
+  const [isVisible, setIsVisible] = useState(false);
+
+  const handleCancel = () => {
+    setIsVisible(false);
+    setTimeout(() => {
+      onClose?.();
+    }, 500);
+  };
+
+  useEffect(() => {
+    setTimeout(() => {
+      setIsVisible(visible);
+    }, 100);
+  }, [visible]);
 
   return (
-    <Popup
-      visible={visible}
-      height={580}
-      onClose={onClose}
-      title="Connected"
-      closable
+    <div
+      className={clsx('recent-connections-popup', {
+        show: isVisible,
+        hidden: !visible,
+      })}
     >
-      <div className="recent-connections-popup">
-        {visible && (
-          <ConnectionList
-            onRemove={handleRemove}
-            data={pinnedList}
-            onFavoriteChange={handleFavoriteChange}
-            title={t('Pinned')}
-            empty={<div className="list-empty">{t('No pinned dapps')}</div>}
-            extra={pinnedList.length > 0 ? t('Drag to sort') : null}
-            onClick={handleClick}
-            onSort={handleSort}
-            sortable={true}
-          ></ConnectionList>
-        )}
-        <ConnectionList
-          onRemove={handleRemove}
-          onClick={handleClick}
-          onFavoriteChange={handleFavoriteChange}
-          data={recentList}
-          title={t('Recently connected')}
-          extra={
-            recentList.length > 0 ? (
-              <a onClick={handleRemoveAll}>{t('Disconnect all')}</a>
-            ) : null
-          }
-          empty={
-            <div className="list-empty mb-[-24px] rounded-b-none">
-              <Empty
-                desc={t('No recently connected Dapps')}
-                className="pt-[68px] pb-[181px]"
-              ></Empty>
-            </div>
-          }
-        ></ConnectionList>
-      </div>
-    </Popup>
+      <PageHeader
+        forceShowBack
+        onBack={handleCancel}
+        className="bg-neutral-bg1 sticky top-0"
+      >
+        {t('page.dashboard.recentConnection.title')}
+      </PageHeader>
+      {list?.length ? (
+        <>
+          <div className="mx-[-20px] px-[20px] h-[calc(100%-97.5px)] overflow-auto">
+            <ConnectionList
+              onRemove={handleRemove}
+              onClick={handleClick}
+              onPin={handlePinChange}
+              data={pinnedList}
+            ></ConnectionList>
+            <ConnectionList
+              onRemove={handleRemove}
+              onClick={handleClick}
+              onPin={handlePinChange}
+              data={recentList}
+            ></ConnectionList>
+          </div>
+          <footer
+            className={clsx(
+              'absolute z-10 bottom-0 left-0 right-0 bg-r-neutral-bg1',
+              'border-t-[0.5px] border-t-solid border-t-rabby-neutral-line px-[20px]',
+              'py-[16px]'
+            )}
+          >
+            <Button
+              ghost
+              block
+              className="btn-disconnect-all"
+              onClick={handleRemoveAll}
+            >
+              {t('page.dashboard.recentConnection.disconnectAll')}
+            </Button>
+          </footer>
+        </>
+      ) : (
+        <div className="list-empty mb-[-24px] rounded-b-none">
+          <Empty
+            desc={t('page.dashboard.recentConnection.noConnectedDapps')}
+            className="pt-[68px] pb-[181px]"
+          ></Empty>
+        </div>
+      )}
+    </div>
   );
 };
 export default RecentConnections;

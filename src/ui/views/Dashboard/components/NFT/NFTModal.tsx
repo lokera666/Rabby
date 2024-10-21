@@ -2,13 +2,20 @@ import { NFTItem } from '@/background/service/openapi';
 import { Button, Tooltip } from 'antd';
 import React from 'react';
 import { useHistory } from 'react-router-dom';
-import { getChain } from 'utils';
+import { getChain } from '@/utils';
 import NFTAvatar from './NFTAvatar';
-import { splitNumberByStep } from '@/ui/utils';
+import { openInTab, splitNumberByStep, useCommonPopupView } from '@/ui/utils';
 import { IGAEventSource } from '@/ui/utils/ga-event';
+import { ReactComponent as RcLinkSVG } from '@/ui/assets/nft-view/link.svg';
+import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
+import { openNFTLinkFromChainItem } from '@/ui/views/ApprovalManagePage/utils';
+import { findChainByServerID } from '@/utils/chain';
 
 interface ContentProps {
   data?: NFTItem;
+  collectionName?: string;
+  onClose?(): void;
 }
 
 const calc = (data?: NFTItem) => {
@@ -18,19 +25,36 @@ const calc = (data?: NFTItem) => {
   return `$${splitNumberByStep(data.usd_price.toFixed(2))}`;
 };
 
-const NFTModal = ({ data }: ContentProps) => {
+const NFTModal = ({ onClose, data, collectionName }: ContentProps) => {
+  const { t } = useTranslation();
   const chain = getChain(data?.chain);
   const price = calc(data);
   const history = useHistory();
+  const { setVisible } = useCommonPopupView();
 
   const handleClickSend = () => {
+    setVisible(false);
+    onClose?.();
     history.push({
       pathname: '/send-nft',
       state: {
-        nftItem: data,
+        nftItem: {
+          ...data,
+          collection: {
+            ...data?.collection,
+            name: collectionName,
+          },
+        },
       },
       search: `?rbisource=${'nftdetail' as IGAEventSource.ISendNFT}`,
     });
+  };
+
+  const onDetail = () => {
+    if (!data) return;
+    const chainItem = findChainByServerID(data?.chain);
+
+    openNFTLinkFromChainItem(chainItem, data.contract_id, true);
   };
 
   return (
@@ -41,33 +65,50 @@ const NFTModal = ({ data }: ContentProps) => {
         type={data?.content_type}
         amount={data?.amount}
       ></NFTAvatar>
-      <div className="nft-preview-card-title">{data?.name || '-'}</div>
+      <div className={clsx('nft-preview-card-title', 'flex')}>
+        <span>{data?.name || '-'}</span>
+        <div
+          className="cursor-pointer hover:opacity-60 ml-4"
+          onClick={onDetail}
+        >
+          <RcLinkSVG />
+        </div>
+      </div>
+
       <div className="nft-preview-card-list">
         <div className="nft-preview-card-list-item">
-          <div className="nft-preview-card-list-item-label">Collection</div>
+          <div className="nft-preview-card-list-item-label">
+            {t('page.dashboard.nft.modal.collection')}
+          </div>
           <div className="nft-preview-card-list-item-value">
-            {data?.collection?.name || '-'}
+            {(data?.collection?.name ?? collectionName) || '-'}
           </div>
         </div>
         <div className="nft-preview-card-list-item">
-          <div className="nft-preview-card-list-item-label">Chain</div>
+          <div className="nft-preview-card-list-item-label">
+            {t('page.dashboard.nft.modal.chain')}
+          </div>
           <div className="nft-preview-card-list-item-value">{chain?.name}</div>
         </div>
         <div className="nft-preview-card-list-item">
-          <div className="nft-preview-card-list-item-label">Purchase Date</div>
+          <div className="nft-preview-card-list-item-label">
+            {t('page.dashboard.nft.modal.purchaseDate')}
+          </div>
           <div className="nft-preview-card-list-item-value">
             {data?.pay_token?.date_at || '-'}
           </div>
         </div>
         <div className="nft-preview-card-list-item">
-          <div className="nft-preview-card-list-item-label">Last Price</div>
+          <div className="nft-preview-card-list-item-label">
+            {t('page.dashboard.nft.modal.lastPrice')}
+          </div>
           <div className="nft-preview-card-list-item-value">{price}</div>
         </div>
       </div>
       <Tooltip
         title={
           !data?.is_erc1155 && !data?.is_erc721
-            ? 'Only ERC 721 and ERC 1155 NFTs are supported for now'
+            ? t('page.dashboard.nft.modal.sendTooltip')
             : null
         }
         overlayClassName="rectangle"
@@ -79,7 +120,7 @@ const NFTModal = ({ data }: ContentProps) => {
           onClick={handleClickSend}
           disabled={!data?.is_erc1155 && !data?.is_erc721}
         >
-          Send
+          {t('page.dashboard.nft.modal.send')}
         </Button>
       </Tooltip>
     </div>

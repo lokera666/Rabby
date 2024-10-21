@@ -1,85 +1,303 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import ClipboardJS from 'clipboard';
-import * as Sentry from '@sentry/browser';
+/* eslint "react-hooks/exhaustive-deps": ["error"] */
+/* eslint-enable react-hooks/exhaustive-deps */
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import clsx from 'clsx';
 import BigNumber from 'bignumber.js';
-import { useTranslation } from 'react-i18next';
-import { useHistory, useLocation } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
+import { useHistory } from 'react-router-dom';
 import { matomoRequestEvent } from '@/utils/matomo-request';
-import { useDebounce } from 'react-use';
-import { Input, Form, Skeleton, message, Button } from 'antd';
-import abiCoder, { AbiCoder } from 'web3-eth-abi';
-import { isValidAddress, intToHex } from 'ethereumjs-util';
-import styled from 'styled-components';
-import { providers } from 'ethers';
+import { useAsyncFn, useDebounce } from 'react-use';
+import { Input, Form, Skeleton, message, Button, InputProps } from 'antd';
+import abiCoderInst, { AbiCoder } from 'web3-eth-abi';
+import { isValidAddress, intToHex, zeroAddress } from 'ethereumjs-util';
+
 import {
-  CHAINS,
   CHAINS_ENUM,
   KEYRING_PURPLE_LOGOS,
   KEYRING_CLASS,
   MINIMUM_GAS_LIMIT,
-  L2_ENUMS,
+  CAN_ESTIMATE_L1_FEE_CHAINS,
+  CAN_NOT_SPECIFY_INTRINSIC_GAS_CHAINS,
 } from 'consts';
-import { useRabbyDispatch, useRabbySelector, connectStore } from 'ui/store';
-import { Account, ChainGas } from 'background/service/preference';
+import {
+  useRabbyDispatch,
+  useRabbySelector,
+  connectStore,
+  useRabbyGetter,
+} from 'ui/store';
+import { Account } from 'background/service/preference';
 import { isSameAddress, useWallet } from 'ui/utils';
 import { query2obj } from 'ui/utils/url';
-import { getTokenSymbol, geTokenDecimals } from 'ui/utils/token';
 import { formatTokenAmount, splitNumberByStep } from 'ui/utils/number';
-import AuthenticationModalPromise from 'ui/component/AuthenticationModal';
 import AccountCard from '../Approval/components/AccountCard';
 import TokenAmountInput from 'ui/component/TokenAmountInput';
-import TagChainSelector from 'ui/component/ChainSelector/tag';
 import { GasLevel, TokenItem } from 'background/service/openapi';
 import { PageHeader, AddressViewer } from 'ui/component';
 import ContactEditModal from 'ui/component/Contact/EditModal';
 import ContactListModal from 'ui/component/Contact/ListModal';
-import GasReserved from './components/GasReserved';
-import GasSelector from './components/GasSelector';
-import IconWhitelist from 'ui/assets/dashboard/whitelist.svg';
-import IconEdit from 'ui/assets/edit-purple.svg';
+import { ReactComponent as RcIconWhitelist } from 'ui/assets/dashboard/whitelist.svg';
+import { ReactComponent as RcIconContact } from 'ui/assets/send-token/contact.svg';
+import { ReactComponent as RcIconEdit } from 'ui/assets/edit-purple.svg';
 import IconCopy from 'ui/assets/copy-no-border.svg';
-import IconSuccess from 'ui/assets/success.svg';
-import IconCheck from 'ui/assets/icon-check.svg';
-import IconContact from 'ui/assets/send-token/contact.svg';
-import IconTemporaryGrantCheckbox from 'ui/assets/send-token/temporary-grant-checkbox.svg';
-import TokenInfoArrow from 'ui/assets/send-token/token-info-arrow.svg';
-import ButtonMax from 'ui/assets/send-token/max.svg';
-import { SvgIconLoading, SvgAlert } from 'ui/assets';
+import { ReactComponent as RcIconCheck } from 'ui/assets/send-token/check.svg';
+import { ReactComponent as RcIconTemporaryGrantCheckbox } from 'ui/assets/send-token/temporary-grant-checkbox.svg';
+
 import './style.less';
 import { getKRCategoryByType } from '@/utils/transaction';
 import { filterRbiSource, useRbiSource } from '@/ui/utils/ga-event';
 import { UIContactBookItem } from '@/background/service/contactBook';
+import {
+  findChain,
+  findChainByEnum,
+  findChainByID,
+  makeTokenFromChain,
+} from '@/utils/chain';
+import ChainSelectorInForm from '@/ui/component/ChainSelector/InForm';
+import AccountSearchInput from '@/ui/component/AccountSearchInput';
+import { confirmAllowTransferToPromise } from './components/ModalConfirmAllowTransfer';
+import { confirmAddToContactsModalPromise } from './components/ModalConfirmAddToContacts';
+import { useContactAccounts } from '@/ui/hooks/useContact';
+import {
+  useCheckAddressType,
+  useParseContractAddress,
+} from '@/ui/hooks/useParseAddress';
+import { isHex } from 'web3-utils';
+import { Chain } from '@debank/common';
+import IconAlertInfo from './alert-info.svg';
+import { formatTxInputDataOnERC20 } from '@/ui/utils/transaction';
+import ThemeIcon from '@/ui/component/ThemeMode/ThemeIcon';
+import {
+  checkIfTokenBalanceEnough,
+  customTestnetTokenToTokenItem,
+} from '@/ui/utils/token';
+import { copyAddress } from '@/ui/utils/clipboard';
+import { MaxButton } from './components/MaxButton';
+import {
+  GasLevelType,
+  SendReserveGasPopup,
+} from '../Swap/Component/ReserveGasPopup';
 
-const TOKEN_VALIDATION_STATUS = {
-  PENDING: 0,
-  SUCCESS: 1,
-  FAILD: 2,
+const abiCoder = (abiCoderInst as unknown) as AbiCoder;
+
+type SendTokenMessageForEoAProps = {
+  active: boolean;
+  formData: FormSendToken;
+} & InputProps;
+const SendTokenMessageForEoa = React.forwardRef<
+  typeof Input,
+  SendTokenMessageForEoAProps
+>(({ active, formData }, ref) => {
+  const { t } = useTranslation();
+
+  const { messageDataForSendToEoa = '' } = formData;
+
+  const { withInputData, currentIsHex, currentData, hexData } = useMemo(() => {
+    return formatTxInputDataOnERC20(messageDataForSendToEoa);
+  }, [messageDataForSendToEoa]);
+
+  return (
+    <div className={clsx('section', !active && 'hidden')}>
+      <div className="section-title flex justify-between items-center">
+        {/* Message */}
+        {t('page.sendToken.sectionMsgDataForEOA.title')}
+      </div>
+
+      <div className="messagedata-input-wrapper">
+        <Form.Item name="messageDataForSendToEoa">
+          <Input.TextArea
+            ref={ref as any}
+            placeholder={t('page.sendToken.sectionMsgDataForEOA.placeholder')}
+            autoSize={{ minRows: 1 }}
+            className="min-h-[40px] max-h-[84px] padding-12px overflow-y-auto"
+          />
+        </Form.Item>
+      </div>
+
+      {withInputData && (
+        <div className="messagedata-parsed-input text-[12px]">
+          {currentIsHex ? (
+            <>
+              <span className="text-r-neutral-body">
+                {/* The current input is Original Data. UTF-8 is: */}
+                {t('page.sendToken.sectionMsgDataForEOA.currentIsOriginal')}
+              </span>
+              <p className="mt-3 mb-0 break-all text-r-neutral-foot">
+                {currentData}
+              </p>
+            </>
+          ) : (
+            <>
+              <span className="text-r-neutral-body">
+                {/* The current input is UTF-8. Original Data is: */}
+                {t('page.sendToken.sectionMsgDataForEOA.currentIsUTF8')}
+              </span>
+              <p className="mt-3 mb-0 break-all text-r-neutral-foot">
+                {hexData}
+              </p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
+type SendTokenMessageForContractProps = {
+  active: boolean;
+  formData: FormSendToken;
+  userAddress?: string;
+  chain?: Chain | null;
+} & InputProps;
+const SendTokenMessageForContract = React.forwardRef<
+  typeof Input,
+  SendTokenMessageForContractProps
+>(({ active, formData, userAddress, chain }, ref) => {
+  const { t } = useTranslation();
+
+  const { messageDataForContractCall: maybeHex = '' } = formData;
+
+  const { currentIsHex, hexData } = useMemo(() => {
+    const result = { currentIsHex: false, hexData: '' };
+
+    if (!maybeHex) return result;
+
+    result.currentIsHex = maybeHex.startsWith('0x') && isHex(maybeHex);
+    result.hexData = maybeHex;
+
+    return result;
+  }, [maybeHex]);
+
+  const {
+    explain,
+    isLoadingExplain,
+    loadingExplainError,
+    contractCallPlainText,
+  } = useParseContractAddress({
+    userAddress,
+    contractAddress: formData.to,
+    chain: chain || null,
+    inputDataHex: hexData,
+  });
+
+  const parseContractError = loadingExplainError || !explain?.abi;
+
+  return (
+    <div className={clsx('section', !active && 'hidden')}>
+      <div className="section-title flex justify-between items-center">
+        {/* Message */}
+        {t('page.sendToken.sectionMsgDataForContract.title')}
+      </div>
+
+      <div className="messagedata-input-wrapper">
+        <Form.Item name="messageDataForContractCall">
+          <Input.TextArea
+            ref={ref as any}
+            placeholder={t(
+              'page.sendToken.sectionMsgDataForContract.placeholder'
+            )}
+            autoSize={{ minRows: 1 }}
+            className="min-h-[40px] max-h-[84px] padding-12px overflow-y-auto text-[12px] text-[#192945]"
+          />
+        </Form.Item>
+      </div>
+
+      {!!maybeHex && (
+        <div className="messagedata-parsed-input text-[12px]">
+          {!currentIsHex ? (
+            <>
+              <span className="mt-16 text-r-red-default">
+                {/* Only supported hex data */}
+                {t('page.sendToken.sectionMsgDataForContract.notHexData')}
+              </span>
+            </>
+          ) : (
+            <>
+              {!parseContractError && (
+                <span className="mt-16 mb-8 text-r-neutral-body">
+                  {/* Contract call simulation: */}
+                  {t('page.sendToken.sectionMsgDataForContract.simulation')}
+                </span>
+              )}
+              {isLoadingExplain ? (
+                <Skeleton.Button
+                  active
+                  className="block min-w-[50px] w-[50%] h-[24px] mt-3"
+                />
+              ) : (
+                <>
+                  {parseContractError && (
+                    <span className="flex items-center text-r-red-default">
+                      <img src={IconAlertInfo} className="w-14 h-14 mr-[3px]" />
+                      <span>
+                        {/* Fail to decode contract call */}
+                        {t(
+                          'page.sendToken.sectionMsgDataForContract.parseError'
+                        )}
+                      </span>
+                    </span>
+                  )}
+                  {!loadingExplainError && contractCallPlainText && (
+                    <p className="mt-3 mb-0 break-all text-r-neutral-foot">
+                      {contractCallPlainText}
+                    </p>
+                  )}
+                </>
+              )}
+            </>
+          )}
+          {/* {explain ? (
+              <PreExecTransactionExplain
+                className="mt-3"
+                explain={explain}
+                // onView={handleView}
+                isViewLoading={isLoadingExplain}
+              />
+            ) : (
+              <Skeleton.Button active style={{ width: '100%', height: 25 }} />
+            )} */}
+        </div>
+      )}
+    </div>
+  );
+});
+
+// interface CustomTestnetTokenItem extends CustomTestnetToken {
+//   chain: string;
+//   raw_amount: string;
+//   raw_amount_hex_str?: string;
+// }
+
+function findInstanceLevel(gasList: GasLevel[]) {
+  return gasList.reduce((prev, current) =>
+    prev.price >= current.price ? prev : current
+  );
+}
+
+const DEFAULT_GAS_USED = 21000;
+
+type FormSendToken = {
+  to: string;
+  amount: string;
+  messageDataForSendToEoa: string;
+  messageDataForContractCall: string;
 };
-
-const MaxButton = styled.img`
-  cursor: pointer;
-  user-select: nonce;
-  margin-left: 6px;
-`;
-
 const SendToken = () => {
   const wallet = useWallet();
   const [currentAccount, setCurrentAccount] = useState<Account | null>(null);
+
   const [chain, setChain] = useState(CHAINS_ENUM.ETH);
+
+  const chainItem = useMemo(() => findChain({ enum: chain }), [chain]);
   const { t } = useTranslation();
   const [tokenAmountForGas, setTokenAmountForGas] = useState('0');
   const { useForm } = Form;
   const history = useHistory();
-  const { state } = useLocation<{
-    showChainsModal?: boolean;
-  }>();
   const dispatch = useRabbyDispatch();
 
   const rbisource = useRbiSource();
-  const { showChainsModal = false } = state ?? {};
 
-  const [form] = useForm<{ to: string; amount: string }>();
+  const [form] = useForm<FormSendToken>();
+  const [formSnapshot, setFormSnapshot] = useState(form.getFieldsValue());
   const [contactInfo, setContactInfo] = useState<null | UIContactBookItem>(
     null
   );
@@ -100,8 +318,36 @@ const SendToken = () => {
     time_at: 0,
     amount: 0,
   });
+
+  const [safeInfo, setSafeInfo] = useState<{
+    chainId: number;
+    nonce: number;
+  } | null>(null);
+  const persistPageStateCache = useCallback(
+    async (nextStateCache?: {
+      values?: FormSendToken;
+      currentToken?: TokenItem | null;
+      safeInfo?: {
+        chainId: number;
+        nonce: number;
+      };
+    }) => {
+      await wallet.setPageStateCache({
+        path: '/send-token',
+        search: history.location.search,
+        params: {},
+        states: {
+          values: form.getFieldsValue(),
+          currentToken,
+          safeInfo,
+          ...nextStateCache,
+        },
+      });
+    },
+    [wallet, history, form, currentToken, safeInfo]
+  );
   const [inited, setInited] = useState(false);
-  const [gasList, setGasList] = useState<GasLevel[]>([]);
+  // const [gasList, setGasList] = useState<GasLevel[]>([]);
   const [sendAlianName, setSendAlianName] = useState<string | null>(null);
   const [showEditContactModal, setShowEditContactModal] = useState(false);
   const [showListContactModal, setShowListContactModal] = useState(false);
@@ -111,22 +357,42 @@ const SendToken = () => {
   const [isSubmitLoading, setIsSubmitLoading] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [balanceWarn, setBalanceWarn] = useState<string | null>(null);
-  const [showGasReserved, setShowGasReserved] = useState(false);
+
+  const [
+    { showGasReserved, clickedMax, isEstimatingGas },
+    setSendMaxInfo,
+  ] = useState({
+    /** @deprecated */
+    showGasReserved: false,
+    clickedMax: false,
+    isEstimatingGas: false,
+  });
+  const setShowGasReserved = useCallback((show: boolean) => {
+    setSendMaxInfo((prev) => ({
+      ...prev,
+      showGasReserved: show,
+    }));
+  }, []);
+  const cancelClickedMax = useCallback(() => {
+    setSendMaxInfo((prev) => ({ ...prev, clickedMax: false }));
+  }, []);
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [showWhitelistAlert, setShowWhitelistAlert] = useState(false);
-  const [amountFocus, setAmountFocus] = useState(false);
-  const [gasSelectorVisible, setGasSelectorVisible] = useState(false);
+
+  const [reserveGasOpen, setReserveGasOpen] = useState(false);
+  const handleReserveGasClose = useCallback(() => {
+    setReserveGasOpen(false);
+  }, []);
+
   const [selectedGasLevel, setSelectedGasLevel] = useState<GasLevel | null>(
     null
   );
+
+  const [estimatedGas, setEstimatedGas] = useState(0);
   const [temporaryGrant, setTemporaryGrant] = useState(false);
-  const [toAddressInWhitelist, setToAddressInWhitelist] = useState(false);
   const [gasPriceMap, setGasPriceMap] = useState<
     Record<string, { list: GasLevel[]; expireAt: number }>
   >({});
-  const [tokenValidationStatus, setTokenValidationStatus] = useState(
-    TOKEN_VALIDATION_STATUS.PENDING
-  );
   const [isGnosisSafe, setIsGnosisSafe] = useState(false);
 
   const { whitelist, whitelistEnabled } = useRabbySelector((s) => ({
@@ -134,22 +400,42 @@ const SendToken = () => {
     whitelistEnabled: s.whitelist.enabled,
   }));
 
+  const {
+    getAddressNote,
+    isAddrOnContactBook,
+    fetchContactAccounts,
+  } = useContactAccounts();
+
+  const {
+    toAddressIsValid,
+    toAddressInWhitelist,
+    toAddressInContactBook,
+  } = useMemo(() => {
+    return {
+      toAddressIsValid: !!formSnapshot.to && isValidAddress(formSnapshot.to),
+      toAddressInWhitelist: !!whitelist.find((item) =>
+        isSameAddress(item, formSnapshot.to)
+      ),
+      toAddressInContactBook: isAddrOnContactBook(formSnapshot.to),
+    };
+  }, [whitelist, isAddrOnContactBook, formSnapshot]);
+
   const whitelistAlertContent = useMemo(() => {
     if (!whitelistEnabled) {
       return {
-        content: 'Whitelist disabled. You can transfer to any address.',
+        content: t('page.sendToken.whitelistAlert__disabled'),
         success: true,
       };
     }
     if (toAddressInWhitelist) {
       return {
-        content: 'The address is whitelisted',
+        content: t('page.sendToken.whitelistAlert__whitelisted'),
         success: true,
       };
     }
     if (temporaryGrant) {
       return {
-        content: 'Temporary permission granted',
+        content: t('page.sendToken.whitelistAlert__temporaryGranted'),
         success: true,
       };
     }
@@ -157,34 +443,42 @@ const SendToken = () => {
       success: false,
       content: (
         <>
-          The address is not whitelisted.
-          <br /> I agree to grant temporary permission to transfer.
+          <Trans t={t} i18nKey="page.sendToken.whitelistAlert__notWhitelisted">
+            The address is not whitelisted.
+            <br /> I agree to grant temporary permission to transfer.
+          </Trans>
         </>
       ),
     };
-  }, [temporaryGrant, whitelist, toAddressInWhitelist, whitelistEnabled]);
+  }, [t, temporaryGrant, toAddressInWhitelist, whitelistEnabled]);
 
   const canSubmit =
     isValidAddress(form.getFieldValue('to')) &&
     !balanceError &&
-    new BigNumber(form.getFieldValue('amount')).isGreaterThan(0) &&
+    new BigNumber(form.getFieldValue('amount')).gte(0) &&
     !isLoading &&
-    tokenValidationStatus === TOKEN_VALIDATION_STATUS.SUCCESS &&
     (!whitelistEnabled || temporaryGrant || toAddressInWhitelist);
-  const isNativeToken = currentToken.id === CHAINS[chain].nativeTokenAddress;
+  const isNativeToken =
+    !!chainItem && currentToken?.id === chainItem.nativeTokenAddress;
 
-  const fetchGasList = async () => {
-    const list: GasLevel[] = await wallet.openapi.gasMarket(
-      CHAINS[chain].serverId
-    );
+  const fetchGasList = useCallback(async () => {
+    const list: GasLevel[] = chainItem?.isTestnet
+      ? await wallet.getCustomTestnetGasMarket({ chainId: chainItem.id })
+      : await wallet.openapi.gasMarket(chainItem?.serverId || '');
     return list;
-  };
+  }, [wallet, chainItem]);
+
+  const [{ value: gasList }, loadGasList] = useAsyncFn(() => {
+    return fetchGasList();
+  }, [fetchGasList]);
+
+  useEffect(() => {
+    loadGasList();
+  }, [loadGasList]);
 
   useDebounce(
     async () => {
-      const targetChain = Object.values(CHAINS).find(
-        (item) => item.enum === chain
-      )!;
+      const targetChain = findChainByEnum(chain)!;
       let gasList: GasLevel[];
       if (
         gasPriceMap[targetChain.enum] &&
@@ -206,124 +500,127 @@ const SendToken = () => {
     [chain]
   );
 
-  const calcGasCost = async () => {
-    const targetChain = Object.values(CHAINS).find(
-      (item) => item.enum === chain
-    )!;
-    const gasList = gasPriceMap[targetChain.enum]?.list;
+  const { addressType } = useCheckAddressType(formSnapshot.to, chainItem);
 
-    if (!gasList) return new BigNumber(0);
-
-    const lastTimeGas: ChainGas | null = await wallet.getLastTimeGasSelection(
-      targetChain.id
-    );
-
-    let gasLevel: GasLevel;
-    if (lastTimeGas?.lastTimeSelect === 'gasPrice' && lastTimeGas.gasPrice) {
-      // use cached gasPrice if exist
-      gasLevel = {
-        level: 'custom',
-        price: lastTimeGas.gasPrice,
-        front_tx_count: 0,
-        estimated_seconds: 0,
-        base_fee: 0,
-      };
-    } else if (
-      lastTimeGas?.lastTimeSelect &&
-      lastTimeGas?.lastTimeSelect === 'gasLevel'
-    ) {
-      const target = gasList.find(
-        (item) => item.level === lastTimeGas?.gasLevel
-      )!;
-      gasLevel = target;
-    } else {
-      // no cache, use the fast level in gasMarket
-      gasLevel = gasList.find((item) => item.level === 'fast')!;
-    }
-    const costTokenAmount = new BigNumber(gasLevel.price)
-      .times(21000)
-      .div(1e18);
-    return costTokenAmount;
-  };
+  const {
+    isShowMessageDataForToken,
+    isShowMessageDataForContract,
+  } = useMemo(() => {
+    return {
+      isShowMessageDataForToken: isNativeToken && addressType === 'EOA',
+      isShowMessageDataForContract: isNativeToken && addressType === 'CONTRACT',
+    };
+  }, [isNativeToken, addressType]);
 
   const handleSubmit = async ({
     to,
     amount,
-  }: {
-    to: string;
-    amount: string;
-  }) => {
+    messageDataForSendToEoa,
+    messageDataForContractCall,
+  }: FormSendToken) => {
     setIsSubmitLoading(true);
-    const chain = Object.values(CHAINS).find(
-      (item) => item.serverId === currentToken.chain
-    )!;
-    const sendValue = new BigNumber(amount).multipliedBy(
-      10 ** currentToken.decimals
-    );
+    const chain = findChain({
+      serverId: currentToken.chain,
+    })!;
+    const sendValue = new BigNumber(amount)
+      .multipliedBy(10 ** currentToken.decimals)
+      .decimalPlaces(0, BigNumber.ROUND_DOWN);
+    const dataInput = [
+      {
+        name: 'transfer',
+        type: 'function',
+        inputs: [
+          {
+            type: 'address',
+            name: 'to',
+          },
+          {
+            type: 'uint256',
+            name: 'value',
+          },
+        ] as any[],
+      } as const,
+      [to, sendValue.toFixed(0)] as any[],
+    ] as const;
     const params: Record<string, any> = {
       chainId: chain.id,
       from: currentAccount!.address,
       to: currentToken.id,
       value: '0x0',
-      data: ((abiCoder as unknown) as AbiCoder).encodeFunctionCall(
-        {
-          name: 'transfer',
-          type: 'function',
-          inputs: [
-            {
-              type: 'address',
-              name: 'to',
-            },
-            {
-              type: 'uint256',
-              name: 'value',
-            },
-          ],
-        },
-        [to, sendValue.toFixed(0)]
-      ),
+      data: abiCoder.encodeFunctionCall(dataInput[0], dataInput[1]),
       isSend: true,
     };
+    if (safeInfo?.nonce != null) {
+      params.nonce = safeInfo.nonce;
+    }
     if (isNativeToken) {
       params.to = to;
       delete params.data;
+
+      if (isShowMessageDataForToken && messageDataForSendToEoa) {
+        const encodedValue = formatTxInputDataOnERC20(messageDataForSendToEoa)
+          .hexData;
+
+        params.data = encodedValue;
+      } else if (isShowMessageDataForContract && messageDataForContractCall) {
+        params.data = messageDataForContractCall;
+      }
+
       params.value = `0x${sendValue.toString(16)}`;
+      // L2 has extra validation fee so we can not set gasLimit as 21000 when send native token
+      const couldSpecifyIntrinsicGas = !CAN_NOT_SPECIFY_INTRINSIC_GAS_CHAINS.includes(
+        chain.enum
+      );
+
       try {
-        const code = await wallet.requestETHRpc(
+        const code = await wallet.requestETHRpc<any>(
           {
             method: 'eth_getCode',
             params: [to, 'latest'],
           },
           chain.serverId
         );
-        if (
-          code &&
-          (code === '0x' || code === '0x0') &&
-          !L2_ENUMS.includes(chain.enum)
-        ) {
-          params.gas = intToHex(21000); // L2 has extra validation fee so can not set gasLimit as 21000 when send native token
+        const notContract = !!code && (code === '0x' || code === '0x0');
+
+        let gasLimit = 0;
+
+        if (estimatedGas) {
+          gasLimit = estimatedGas;
+        }
+
+        /**
+         * we don't need always fetch estimatedGas, if no `params.gas` set below,
+         * `params.gas` would be filled on Tx Page.
+         */
+        if (gasLimit > 0) {
+          params.gas = intToHex(gasLimit);
+        } else if (notContract && couldSpecifyIntrinsicGas) {
+          params.gas = intToHex(DEFAULT_GAS_USED);
+        }
+        if (!notContract) {
+          // not pre-set gasLimit if to address is contract address
+          delete params.gas;
         }
       } catch (e) {
-        if (!L2_ENUMS.includes(chain.enum)) {
-          params.gas = intToHex(21000); // L2 has extra validation fee so can not set gasLimit as 21000 when send native token
+        if (couldSpecifyIntrinsicGas) {
+          params.gas = intToHex(DEFAULT_GAS_USED);
         }
       }
+
+      if (
+        isShowMessageDataForToken &&
+        (messageDataForContractCall || messageDataForSendToEoa)
+      ) {
+        delete params.gas;
+      }
       setIsSubmitLoading(false);
-      if (showGasReserved) {
+      if (clickedMax && selectedGasLevel?.price) {
         params.gasPrice = selectedGasLevel?.price;
       }
     }
     try {
       await wallet.setLastTimeSendToken(currentAccount!.address, currentToken);
-      await wallet.setPageStateCache({
-        path: history.location.pathname,
-        search: history.location.search,
-        params: {},
-        states: {
-          values: form.getFieldsValue(),
-          currentToken,
-        },
-      });
+      await persistPageStateCache();
       matomoRequestEvent({
         category: 'Send',
         action: 'createTx',
@@ -358,7 +655,6 @@ const SendToken = () => {
     setShowListContactModal(false);
     setShowEditContactModal(false);
     setContactInfo(account);
-    setAmountFocus(true);
     const values = form.getFieldsValue();
     const to = account ? account.address : '';
     if (!account) return;
@@ -370,6 +666,10 @@ const SendToken = () => {
       ...values,
       to,
     });
+  };
+
+  const handleCancelContact = () => {
+    setShowListContactModal(false);
   };
 
   const handleCancelEditContact = () => {
@@ -385,257 +685,561 @@ const SendToken = () => {
     setShowEditContactModal(true);
   };
 
-  const handleFormValuesChange = async (
-    changedValues,
-    {
-      to,
-      amount,
-    }: {
-      to: string;
-      amount: string;
-    },
-    token?: TokenItem
-  ) => {
-    if (changedValues && changedValues.to) {
-      setTemporaryGrant(false);
-    }
-    const targetToken = token || currentToken;
-    if (!to || !isValidAddress(to)) {
-      setEditBtnDisabled(true);
-      setShowWhitelistAlert(false);
-    } else {
-      setShowWhitelistAlert(true);
-      setEditBtnDisabled(false);
-      setToAddressInWhitelist(
-        !!whitelist.find((item) => isSameAddress(item, to))
-      );
-    }
-    let resultAmount = amount;
-    if (!/^\d*(\.\d*)?$/.test(amount)) {
-      resultAmount = cacheAmount;
-    }
+  const handleFormValuesChange = useCallback(
+    async (
+      changedValues,
+      { to, amount, ...restForm }: FormSendToken,
+      opts?: {
+        token?: TokenItem;
+        isInitFromCache?: boolean;
+      }
+    ) => {
+      const { token, isInitFromCache } = opts || {};
+      if (changedValues && changedValues.to) {
+        setTemporaryGrant(false);
+      }
 
-    if (amount !== cacheAmount) {
-      if (showGasReserved && Number(resultAmount) > 0) {
-        setShowGasReserved(false);
-      } else if (isNativeToken && !isGnosisSafe) {
-        const gasCostTokenAmount = await calcGasCost();
-        if (
-          new BigNumber(targetToken.raw_amount_hex_str || 0)
-            .div(10 ** targetToken.decimals)
-            .minus(amount)
-            .minus(gasCostTokenAmount)
-            .lt(0)
-        ) {
-          setBalanceWarn(t('Gas fee reservation required'));
-        } else {
-          setBalanceWarn(null);
+      if ((!isInitFromCache && changedValues?.to) || (!changedValues && to)) {
+        restForm.messageDataForSendToEoa = '';
+        restForm.messageDataForContractCall = '';
+      }
+
+      const targetToken = token || currentToken;
+      if (!to || !isValidAddress(to)) {
+        setEditBtnDisabled(true);
+        setShowWhitelistAlert(false);
+      } else {
+        setShowWhitelistAlert(true);
+        setEditBtnDisabled(false);
+      }
+      let resultAmount = amount;
+      if (!/^\d*(\.\d*)?$/.test(amount)) {
+        resultAmount = cacheAmount;
+      }
+
+      if (amount !== cacheAmount) {
+        if (showGasReserved && Number(resultAmount) > 0) {
+          setShowGasReserved(false);
         }
       }
-    }
 
-    if (
-      new BigNumber(resultAmount || 0).isGreaterThan(
-        new BigNumber(targetToken.raw_amount_hex_str || 0).div(
-          10 ** targetToken.decimals
+      if (
+        new BigNumber(resultAmount || 0).isGreaterThan(
+          new BigNumber(targetToken.raw_amount_hex_str || 0).div(
+            10 ** targetToken.decimals
+          )
         )
-      )
-    ) {
-      setBalanceError(t('Insufficient balance'));
-    } else {
-      setBalanceError(null);
-    }
-    form.setFieldsValue({
-      to,
-      amount: resultAmount,
-    });
-    setCacheAmount(resultAmount);
-    const alianName = await wallet.getAlianName(to.toLowerCase());
-    if (alianName) {
-      setContactInfo({ address: to, name: alianName });
-      setShowContactInfo(true);
-    } else if (contactInfo) {
-      setContactInfo(null);
-    }
-  };
+      ) {
+        // Insufficient balance
+        setBalanceError(t('page.sendToken.balanceError.insufficientBalance'));
+      } else {
+        setBalanceError(null);
+      }
+      const nextFormValues = {
+        ...restForm,
+        to,
+        amount: resultAmount,
+      };
 
-  const handleCurrentTokenChange = async (token: TokenItem) => {
-    if (showGasReserved) {
-      setShowGasReserved(false);
+      await persistPageStateCache({
+        values: nextFormValues,
+        currentToken: targetToken,
+      });
+
+      form.setFieldsValue(nextFormValues);
+      setFormSnapshot(nextFormValues);
+      setCacheAmount(resultAmount);
+      const alianName = await wallet.getAlianName(to.toLowerCase());
+      if (alianName) {
+        setContactInfo({ address: to, name: alianName });
+        setShowContactInfo(true);
+      } else if (contactInfo) {
+        setContactInfo(null);
+      }
+    },
+    [
+      cacheAmount,
+      contactInfo,
+      currentToken,
+      form,
+      persistPageStateCache,
+      setShowGasReserved,
+      showGasReserved,
+      t,
+      wallet,
+    ]
+  );
+
+  const estimateGasOnChain = useCallback(
+    async (input?: {
+      chainItem?: Chain | null;
+      tokenItem?: TokenItem;
+      currentAddress?: string;
+    }) => {
+      const result = { gasNumber: 0 };
+
+      const doReturn = (nextGas = DEFAULT_GAS_USED) => {
+        result.gasNumber = nextGas;
+
+        setEstimatedGas(result.gasNumber);
+        return result;
+      };
+
+      const {
+        chainItem: lastestChainItem = chainItem,
+        tokenItem = currentToken,
+        currentAddress = currentAccount?.address,
+      } = input || {};
+
+      if (!lastestChainItem?.needEstimateGas) return doReturn(DEFAULT_GAS_USED);
+
+      if (!currentAddress) return doReturn();
+
+      if (lastestChainItem.serverId !== tokenItem.chain) {
+        console.warn(
+          'estimateGasOnChain:: chain not matched!',
+          lastestChainItem,
+          tokenItem
+        );
+        return doReturn();
+      }
+
+      const to = form.getFieldValue('to');
+
+      let _gasUsed: string = intToHex(DEFAULT_GAS_USED);
+      try {
+        _gasUsed = await wallet.requestETHRpc<string>(
+          {
+            method: 'eth_estimateGas',
+            params: [
+              {
+                from: currentAddress,
+                to: to && isValidAddress(to) ? to : zeroAddress(),
+                gasPrice: intToHex(0),
+                value: intToHex(0),
+              },
+            ],
+          },
+          lastestChainItem.serverId
+        );
+      } catch (err) {
+        console.error(err);
+      }
+
+      const gasUsed = new BigNumber(_gasUsed)
+        .multipliedBy(1.5)
+        .integerValue()
+        .toNumber();
+
+      return doReturn(Number(gasUsed));
+    },
+    [wallet, currentAccount, chainItem, form, currentToken]
+  );
+
+  const loadCurrentToken = useCallback(
+    async (id: string, chainId: string, currentAddress: string) => {
+      const chain = findChain({
+        serverId: chainId,
+      });
+      let result: TokenItem | null = null;
+      if (chain?.isTestnet) {
+        const res = await wallet.getCustomTestnetToken({
+          address: currentAddress,
+          chainId: chain.id,
+          tokenId: id,
+        });
+        if (res) {
+          result = customTestnetTokenToTokenItem(res);
+        }
+      } else {
+        result = await wallet.openapi.getToken(currentAddress, chainId, id);
+      }
+      if (result) {
+        estimateGasOnChain({
+          chainItem: chain,
+          tokenItem: result,
+          currentAddress,
+        });
+        setCurrentToken(result);
+      }
+      setIsLoading(false);
+
+      return result;
+    },
+    [wallet, estimateGasOnChain]
+  );
+
+  const handleAmountChange = useCallback(() => {
+    cancelClickedMax();
+  }, [cancelClickedMax]);
+
+  const handleCurrentTokenChange = useCallback(
+    async (token: TokenItem) => {
+      cancelClickedMax();
+      if (showGasReserved) {
+        setShowGasReserved(false);
+      }
+      const account = (await wallet.syncGetCurrentAccount())!;
+      const values = form.getFieldsValue();
+      if (token.id !== currentToken.id || token.chain !== currentToken.chain) {
+        form.setFieldsValue({
+          ...values,
+          amount: '',
+        });
+      }
+      const chainItem = findChain({ serverId: token.chain });
+      setChain(chainItem?.enum ?? CHAINS_ENUM.ETH);
+      setCurrentToken(token);
+      setEstimatedGas(0);
+      await persistPageStateCache({ currentToken: token });
+      setBalanceError(null);
+      setBalanceWarn(null);
+      setIsLoading(true);
+      loadCurrentToken(token.id, token.chain, account.address);
+    },
+    [
+      currentToken.chain,
+      currentToken.id,
+      form,
+      loadCurrentToken,
+      persistPageStateCache,
+      setShowGasReserved,
+      showGasReserved,
+      wallet,
+      cancelClickedMax,
+    ]
+  );
+
+  const handleGasChange = useCallback(
+    (input: {
+      gasLevel: GasLevel;
+      updateTokenAmount?: boolean;
+      gasLimit?: number;
+    }) => {
+      const {
+        gasLevel,
+        updateTokenAmount = true,
+        gasLimit = MINIMUM_GAS_LIMIT,
+      } = input;
+      setSelectedGasLevel(gasLevel);
+
+      const gasTokenAmount = new BigNumber(gasLevel.price)
+        .times(gasLimit)
+        .div(1e18);
+      setTokenAmountForGas(gasTokenAmount.toFixed());
+      if (updateTokenAmount) {
+        const values = form.getFieldsValue();
+        const diffValue = new BigNumber(currentToken.raw_amount_hex_str || 0)
+          .div(10 ** currentToken.decimals)
+          .minus(gasTokenAmount);
+        if (diffValue.lt(0)) {
+          setShowGasReserved(false);
+        }
+        const newValues = {
+          ...values,
+          amount: diffValue.gt(0) ? diffValue.toFixed() : '0',
+        };
+        form.setFieldsValue(newValues);
+      }
+      return gasTokenAmount;
+    },
+    [
+      currentToken.decimals,
+      currentToken.raw_amount_hex_str,
+      form,
+      setShowGasReserved,
+    ]
+  );
+
+  const couldReserveGas = isNativeToken && !isGnosisSafe;
+
+  const handleMaxInfoChanged = useCallback(
+    async (input?: { gasLevel: GasLevel }) => {
+      if (!currentAccount) return;
+
+      if (isLoading) return;
+      if (isEstimatingGas) return;
+
+      const tokenBalance = new BigNumber(
+        currentToken.raw_amount_hex_str || 0
+      ).div(10 ** currentToken.decimals);
+      let amount = tokenBalance.toFixed();
+      const to = form.getFieldValue('to');
+
+      const {
+        gasLevel = selectedGasLevel ||
+          (await loadGasList().then(findInstanceLevel)),
+      } = input || {};
+      const needReserveGasOnSendToken = gasLevel.price > 0;
+
+      if (couldReserveGas && needReserveGasOnSendToken) {
+        setShowGasReserved(true);
+        setSendMaxInfo((prev) => ({ ...prev, isEstimatingGas: true }));
+        try {
+          const { gasNumber } = await estimateGasOnChain({
+            chainItem,
+            tokenItem: currentToken,
+          });
+
+          let gasTokenAmount = handleGasChange({
+            gasLevel: gasLevel,
+            updateTokenAmount: false,
+            gasLimit: gasNumber,
+          });
+          if (CAN_ESTIMATE_L1_FEE_CHAINS.includes(chain)) {
+            const l1GasFee = await wallet.fetchEstimatedL1Fee(
+              {
+                txParams: {
+                  chainId: chainItem.id,
+                  from: currentAccount.address,
+                  to: to && isValidAddress(to) ? to : zeroAddress(),
+                  value: currentToken.raw_amount_hex_str,
+                  gas: intToHex(DEFAULT_GAS_USED),
+                  gasPrice: `0x${new BigNumber(gasLevel.price).toString(16)}`,
+                  data: '0x',
+                },
+              },
+              chain
+            );
+            gasTokenAmount = gasTokenAmount
+              .plus(new BigNumber(l1GasFee).div(1e18))
+              .times(1.1);
+          }
+          const tokenForSend = tokenBalance.minus(gasTokenAmount);
+          amount = tokenForSend.gt(0) ? tokenForSend.toFixed() : '0';
+          if (tokenForSend.lt(0)) {
+            setShowGasReserved(false);
+          }
+        } catch (e) {
+          if (!isGnosisSafe) {
+            // // Gas fee reservation required
+            // setBalanceWarn(t('page.sendToken.balanceWarn.gasFeeReservation'));
+            setShowGasReserved(false);
+          }
+        } finally {
+          setSendMaxInfo((prev) => ({ ...prev, isEstimatingGas: false }));
+        }
+      }
+
+      const values = form.getFieldsValue();
+      const newValues = {
+        ...values,
+        amount,
+      };
+      form.setFieldsValue(newValues);
+      handleFormValuesChange(null, newValues);
+    },
+    [
+      chain,
+      chainItem,
+      currentAccount,
+      currentToken,
+      estimateGasOnChain,
+      selectedGasLevel,
+      loadGasList,
+      form,
+      handleFormValuesChange,
+      handleGasChange,
+      couldReserveGas,
+      isGnosisSafe,
+      isLoading,
+      setShowGasReserved,
+      isEstimatingGas,
+      wallet,
+    ]
+  );
+  const handleGasLevelChanged = useCallback(
+    async (gl?: GasLevel | null) => {
+      handleReserveGasClose();
+      const gasLevel = gl
+        ? gl
+        : await loadGasList().then(
+            (res) =>
+              res.find((item) => item.level === 'normal') ||
+              findInstanceLevel(res)
+          );
+
+      setSelectedGasLevel(gasLevel);
+      handleMaxInfoChanged({ gasLevel });
+    },
+    [handleReserveGasClose, handleMaxInfoChanged, loadGasList]
+  );
+
+  const handleClickMaxButton = useCallback(async () => {
+    setSendMaxInfo((prev) => ({ ...prev, clickedMax: true }));
+
+    if (couldReserveGas) {
+      setReserveGasOpen(true);
+    } else {
+      handleMaxInfoChanged();
     }
-    const account = (await wallet.syncGetCurrentAccount())!;
-    const values = form.getFieldsValue();
-    if (token.id !== currentToken.id || token.chain !== currentToken.chain) {
+  }, [couldReserveGas, handleMaxInfoChanged]);
+
+  const handleChainChanged = useCallback(
+    async (val: CHAINS_ENUM) => {
+      setSendMaxInfo((prev) => ({ ...prev, clickedMax: false }));
+      const gasList = await loadGasList();
+      setSelectedGasLevel(
+        gasList.find(
+          (gasLevel) => (gasLevel.level as GasLevelType) === 'normal'
+        ) || findInstanceLevel(gasList)
+      );
+
+      const account = (await wallet.syncGetCurrentAccount())!;
+      const chain = findChain({
+        enum: val,
+      });
+      if (!chain) {
+        return;
+      }
+      setChain(val);
+      setCurrentToken({
+        id: chain.nativeTokenAddress,
+        decimals: chain.nativeTokenDecimals,
+        logo_url: chain.nativeTokenLogo,
+        symbol: chain.nativeTokenSymbol,
+        display_symbol: chain.nativeTokenSymbol,
+        optimized_symbol: chain.nativeTokenSymbol,
+        is_core: true,
+        is_verified: true,
+        is_wallet: true,
+        amount: 0,
+        price: 0,
+        name: chain.nativeTokenSymbol,
+        chain: chain.serverId,
+        time_at: 0,
+      });
+
+      let nextToken: TokenItem | null = null;
+      try {
+        nextToken = await loadCurrentToken(
+          chain.nativeTokenAddress,
+          chain.serverId,
+          account.address
+        );
+      } catch (error) {
+        console.error(error);
+      }
+
+      const values = form.getFieldsValue();
       form.setFieldsValue({
         ...values,
         amount: '',
       });
-    }
-    setCurrentToken(token);
-    setBalanceError(null);
-    setBalanceWarn(null);
-    setIsLoading(true);
-    loadCurrentToken(token.id, token.chain, account.address);
-  };
-
-  const handleClickTokenBalance = async () => {
-    if (isLoading) return;
-    if (showGasReserved) return;
-    const tokenBalance = new BigNumber(
-      currentToken.raw_amount_hex_str || 0
-    ).div(10 ** currentToken.decimals);
-    let amount = tokenBalance.toFixed();
-
-    if (isNativeToken && !isGnosisSafe) {
-      setShowGasReserved(true);
-      try {
-        const list = await fetchGasList();
-        setGasList(list);
-        let instant = list[0];
-        for (let i = 1; i < list.length; i++) {
-          if (list[i].price > instant.price) {
-            instant = list[i];
-          }
+      setShowGasReserved(false);
+      handleFormValuesChange(
+        { amount: '' },
+        {
+          ...values,
+          amount: '',
+        },
+        {
+          ...(nextToken && { token: nextToken }),
         }
-        const gasTokenAmount = handleGasChange(instant, false);
-        const tokenForSend = tokenBalance.minus(gasTokenAmount);
-        amount = tokenForSend.gt(0) ? tokenForSend.toFixed() : '0';
-        if (tokenForSend.lt(0)) {
-          setShowGasReserved(false);
-        }
-      } catch (e) {
-        if (!isGnosisSafe) {
-          setBalanceWarn(t('Gas fee reservation required'));
-          setShowGasReserved(false);
-        }
-      }
-    }
+      );
+    },
+    [
+      form,
+      handleFormValuesChange,
+      loadCurrentToken,
+      setShowGasReserved,
+      loadGasList,
+      wallet,
+    ]
+  );
 
-    const values = form.getFieldsValue();
-    const newValues = {
-      ...values,
-      amount,
-    };
-    form.setFieldsValue(newValues);
-    handleFormValuesChange(null, newValues);
-  };
-
-  const handleChainChanged = async (val: CHAINS_ENUM) => {
-    const account = (await wallet.syncGetCurrentAccount())!;
-    const chain = CHAINS[val];
-    setChain(val);
-    setCurrentToken({
-      id: chain.nativeTokenAddress,
-      decimals: chain.nativeTokenDecimals,
-      logo_url: chain.nativeTokenLogo,
-      symbol: chain.nativeTokenSymbol,
-      display_symbol: chain.nativeTokenSymbol,
-      optimized_symbol: chain.nativeTokenSymbol,
-      is_core: true,
-      is_verified: true,
-      is_wallet: true,
-      amount: 0,
-      price: 0,
-      name: chain.nativeTokenSymbol,
-      chain: chain.serverId,
-      time_at: 0,
-    });
-    loadCurrentToken(chain.nativeTokenAddress, chain.serverId, account.address);
-    const values = form.getFieldsValue();
-    form.setFieldsValue({
-      ...values,
-      amount: '',
-    });
-    setShowGasReserved(false);
-    handleFormValuesChange(
-      { amount: '' },
-      {
-        ...values,
-        amount: '',
-      }
-    );
-  };
-
-  const handleCopyContractAddress = () => {
-    const clipboard = new ClipboardJS('.send-token', {
-      text: function () {
-        return currentToken.id;
-      },
-    });
-
-    clipboard.on('success', () => {
-      message.success({
-        duration: 3,
-        icon: <i />,
-        content: (
-          <div>
-            <div className="flex gap-4 mb-4">
-              <img src={IconSuccess} alt="" />
-              Copied
-            </div>
-            <div className="text-white">{currentToken.id}</div>
-          </div>
-        ),
-      });
-      clipboard.destroy();
-    });
+  const handleCopyContactAddress = () => {
+    copyAddress(currentToken.id);
   };
 
   const handleClickBack = () => {
-    history.replace('/');
-  };
-
-  const loadCurrentToken = async (
-    id: string,
-    chainId: string,
-    address: string
-  ) => {
-    const t = await wallet.openapi.getToken(address, chainId, id);
-    setCurrentToken(t);
-    setIsLoading(false);
+    const from = (history.location.state as any)?.from;
+    if (from) {
+      history.replace(from);
+    } else {
+      history.replace('/');
+    }
   };
 
   const initByCache = async () => {
     const account = (await wallet.syncGetCurrentAccount())!;
     const qs = query2obj(history.location.search);
+
     if (qs.token) {
       const [tokenChain, id] = qs.token.split(':');
       if (!tokenChain || !id) return;
-      const target = Object.values(CHAINS).find(
-        (item) => item.serverId === tokenChain
-      );
+
+      const target = findChain({
+        serverId: tokenChain,
+      });
       if (!target) {
         loadCurrentToken(currentToken.id, currentToken.chain, account.address);
         return;
       }
       setChain(target.enum);
       loadCurrentToken(id, tokenChain, account.address);
+    } else if ((history.location.state as any)?.safeInfo) {
+      const safeInfo: {
+        nonce: number;
+        chainId: number;
+      } = (history.location.state as any)?.safeInfo;
+
+      const chain = findChainByID(safeInfo.chainId);
+      let nativeToken: TokenItem | null = null;
+      if (chain) {
+        setChain(chain.enum);
+        nativeToken = await loadCurrentToken(
+          chain.nativeTokenAddress,
+          chain.serverId,
+          account.address
+        );
+      }
+      setSafeInfo(safeInfo);
+      persistPageStateCache({
+        safeInfo,
+        currentToken: nativeToken || currentToken,
+      });
     } else {
+      let tokenFromOrder: TokenItem | null = null;
+
       const lastTimeToken = await wallet.getLastTimeSendToken(account.address);
-      if (lastTimeToken) setCurrentToken(lastTimeToken);
-      let needLoadToken: TokenItem = lastTimeToken || currentToken;
+      if (lastTimeToken) {
+        setCurrentToken(lastTimeToken);
+      } else {
+        const { firstChain } = await dispatch.chains.getOrderedChainList({
+          supportChains: undefined,
+        });
+        tokenFromOrder = firstChain ? makeTokenFromChain(firstChain) : null;
+        if (firstChain) setCurrentToken(tokenFromOrder!);
+      }
+
+      let needLoadToken: TokenItem =
+        lastTimeToken || tokenFromOrder || currentToken;
       if (await wallet.hasPageStateCache()) {
         const cache = await wallet.getPageStateCache();
         if (cache?.path === history.location.pathname) {
           if (cache.states.values) {
             form.setFieldsValue(cache.states.values);
-            handleFormValuesChange(
-              cache.states.values,
-              form.getFieldsValue(),
-              cache.states.currentToken
-            );
+            handleFormValuesChange(cache.states.values, form.getFieldsValue(), {
+              token: cache.states.currentToken,
+              isInitFromCache: true,
+            });
           }
           if (cache.states.currentToken) {
             setCurrentToken(cache.states.currentToken);
             needLoadToken = cache.states.currentToken;
           }
+          if (cache.states.safeInfo) {
+            setSafeInfo(cache.states.safeInfo);
+          }
         }
       }
-      if (needLoadToken.chain !== CHAINS[chain].serverId) {
-        const target = Object.values(CHAINS).find(
-          (item) => item.serverId === needLoadToken.chain
-        )!;
-        setChain(target.enum);
+
+      if (chainItem && needLoadToken.chain !== chainItem.serverId) {
+        const target = findChain({ serverId: needLoadToken.chain });
+        if (target?.enum) {
+          setChain(target.enum);
+        }
       }
       loadCurrentToken(needLoadToken.id, needLoadToken.chain, account.address);
     }
@@ -645,6 +1249,7 @@ const SendToken = () => {
     const account = await wallet.syncGetCurrentAccount();
     dispatch.whitelist.getWhitelistEnabled();
     dispatch.whitelist.getWhitelist();
+    dispatch.contactBook.getContactBookAsync();
     if (!account) {
       history.replace('/');
       return;
@@ -662,6 +1267,7 @@ const SendToken = () => {
     if (inited) {
       initByCache();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inited]);
 
   const getAlianName = async () => {
@@ -669,110 +1275,49 @@ const SendToken = () => {
     setSendAlianName(alianName || '');
   };
 
-  const validateCurrentToken = async () => {
-    setTokenValidationStatus(TOKEN_VALIDATION_STATUS.PENDING);
-    const chain = Object.values(CHAINS).find(
-      (item) => item.serverId === currentToken.chain
-    );
-    if (!chain) return;
-    if (currentToken.id === chain.nativeTokenAddress) {
-      if (
-        currentToken.symbol !== chain.nativeTokenSymbol ||
-        currentToken.decimals !== chain.nativeTokenDecimals
-      ) {
-        Sentry.captureException(
-          new Error('Token validation failed'),
-          (scope) => {
-            scope.setTag('id', `${currentToken.chain}-${currentToken.id}`);
-            return scope;
-          }
-        );
-        setTokenValidationStatus(TOKEN_VALIDATION_STATUS.FAILD);
-      } else {
-        setTokenValidationStatus(TOKEN_VALIDATION_STATUS.SUCCESS);
-      }
-      return;
-    }
-    try {
-      const customRPC = await wallet.getCustomRpcByChain(chain.enum);
-      const decimals = await geTokenDecimals(
-        currentToken.id,
-        new providers.JsonRpcProvider(customRPC || chain.thridPartyRPC)
-      );
-      const symbol = await getTokenSymbol(
-        currentToken.id,
-        new providers.JsonRpcProvider(customRPC || chain.thridPartyRPC)
-      );
-      if (
-        symbol !== currentToken.symbol ||
-        decimals !== currentToken.decimals
-      ) {
-        Sentry.captureException(
-          new Error('Token validation failed'),
-          (scope) => {
-            scope.setTag('id', `${currentToken.chain}-${currentToken.id}`);
-            return scope;
-          }
-        );
-        setTokenValidationStatus(TOKEN_VALIDATION_STATUS.FAILD);
-      } else {
-        setTokenValidationStatus(TOKEN_VALIDATION_STATUS.SUCCESS);
-      }
-    } catch (e) {
-      Sentry.captureException(new Error('Token validation failed'), (scope) => {
-        scope.setTag('id', `${currentToken.chain}-${currentToken.id}`);
-        return scope;
-      });
-      setTokenValidationStatus(TOKEN_VALIDATION_STATUS.FAILD);
-      throw e;
-    }
+  const handleClickAllowTransferTo = () => {
+    if (!whitelistEnabled || temporaryGrant || toAddressInWhitelist) return;
+
+    const toAddr = form.getFieldValue('to');
+    confirmAllowTransferToPromise({
+      wallet,
+      toAddr,
+      showAddToWhitelist: !!toAddressInContactBook,
+      // Enter the Password to Confirm
+      title: t('page.sendToken.modalConfirmAllowTransferTo.title'),
+      // Cancel
+      cancelText: t('page.sendToken.modalConfirmAllowTransferTo.cancelText'),
+      // Confirm
+      confirmText: t('page.sendToken.modalConfirmAllowTransferTo.confirmText'),
+      onFinished(result) {
+        dispatch.whitelist.getWhitelist();
+        setTemporaryGrant(true);
+      },
+    });
   };
 
-  const handleClickGasReserved = () => {
-    setGasSelectorVisible(true);
-  };
+  const handleClickAddContact = () => {
+    if (toAddressInContactBook) return;
 
-  const handleGasSelectorClose = () => {
-    setGasSelectorVisible(false);
-  };
-
-  const handleGasChange = (gas: GasLevel, updateTokenAmount = true) => {
-    setSelectedGasLevel(gas);
-    const gasTokenAmount = new BigNumber(gas.price)
-      .times(MINIMUM_GAS_LIMIT)
-      .div(1e18);
-    setTokenAmountForGas(gasTokenAmount.toFixed());
-    if (updateTokenAmount) {
-      const values = form.getFieldsValue();
-      const diffValue = new BigNumber(currentToken.raw_amount_hex_str || 0)
-        .div(10 ** currentToken.decimals)
-        .minus(gasTokenAmount);
-      if (diffValue.lt(0)) {
-        setShowGasReserved(false);
-      }
-      const newValues = {
-        ...values,
-        amount: diffValue.gt(0) ? diffValue.toFixed() : '0',
-      };
-      form.setFieldsValue(newValues);
-    }
-    return gasTokenAmount;
-  };
-
-  const handleClickWhitelistAlert = () => {
-    if (whitelistEnabled && !temporaryGrant && !toAddressInWhitelist) {
-      AuthenticationModalPromise({
-        title: 'Grant temporary permission',
-        cancelText: 'Cancel',
-        wallet,
-        onFinished() {
-          setTemporaryGrant(true);
-        },
-        onCancel() {
-          // do nothing
-        },
-      });
-    }
+    const toAddr = form.getFieldValue('to');
+    confirmAddToContactsModalPromise({
+      wallet,
+      initAddressNote: getAddressNote(toAddr),
+      addrToAdd: toAddr,
+      title: t('page.sendToken.modalConfirmAddToContacts.title'),
+      confirmText: t('page.sendToken.modalConfirmAddToContacts.confirmText'),
+      async onFinished(result) {
+        await dispatch.contactBook.getContactBookAsync();
+        // trigger fetch contactInfo
+        const values = form.getFieldsValue();
+        handleFormValuesChange(null, { ...values });
+        await Promise.allSettled([
+          fetchContactAccounts(),
+          // trigger get balance of address
+          wallet.getInMemoryAddressBalance(result.contactAddrAdded, true),
+        ]);
+      },
+    });
   };
 
   useEffect(() => {
@@ -780,25 +1325,60 @@ const SendToken = () => {
     return () => {
       wallet.clearPageStateCache();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    validateCurrentToken();
-  }, [currentToken]);
 
   useEffect(() => {
     if (currentAccount) {
       getAlianName();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentAccount]);
+
+  const { balanceNumText } = useMemo(() => {
+    const balanceNum = new BigNumber(currentToken.raw_amount_hex_str || 0).div(
+      10 ** currentToken.decimals
+    );
+    const decimalPlaces = clickedMax || selectedGasLevel ? 8 : 4;
+
+    return {
+      balanceNumText: formatTokenAmount(
+        balanceNum.toFixed(decimalPlaces, BigNumber.ROUND_FLOOR),
+        decimalPlaces
+      ),
+    };
+  }, [
+    currentToken.raw_amount_hex_str,
+    currentToken.decimals,
+    clickedMax,
+    selectedGasLevel,
+  ]);
+
+  useEffect(() => {
+    if (currentToken && gasList) {
+      const result = checkIfTokenBalanceEnough(currentToken, {
+        gasList,
+        gasLimit: MINIMUM_GAS_LIMIT,
+      });
+
+      if (result.isNormalEnough && result.normalLevel) {
+        setSelectedGasLevel(result.normalLevel);
+      } else if (result.isSlowEnough && result.slowLevel) {
+        setSelectedGasLevel(result.slowLevel);
+      } else if (result.customLevel) {
+        setSelectedGasLevel(result.customLevel);
+      }
+    }
+  }, [currentToken, gasList]);
 
   return (
     <div className="send-token">
       <PageHeader onBack={handleClickBack} forceShowBack>
-        {t('Send')}
+        {t('page.sendToken.header.title')}
       </PageHeader>
       <Form
         form={form}
+        className="send-token-form"
         onFinish={handleSubmit}
         onValuesChange={handleFormValuesChange}
         initialValues={{
@@ -806,241 +1386,265 @@ const SendToken = () => {
           amount: '',
         }}
       >
-        <TagChainSelector
-          value={chain}
-          onChange={handleChainChanged}
-          showModal={showChainsModal}
-        />
-        <div className="section relative">
-          <div className="section-title">{t('From')}</div>
-          <AccountCard
-            icons={{
-              mnemonic: KEYRING_PURPLE_LOGOS[KEYRING_CLASS.MNEMONIC],
-              privatekey: KEYRING_PURPLE_LOGOS[KEYRING_CLASS.PRIVATE_KEY],
-              watch: KEYRING_PURPLE_LOGOS[KEYRING_CLASS.WATCH],
-            }}
-            alianName={sendAlianName}
-          />
-          <div className="section-title">
-            <span className="section-title__to">{t('To')}</span>
-            <div className="flex flex-1 justify-end items-center">
-              {showContactInfo && !!contactInfo && (
-                <div
-                  className={clsx('contact-info', {
-                    disabled: editBtnDisabled,
-                  })}
-                  onClick={handleEditContact}
-                >
-                  {contactInfo && (
-                    <>
-                      <img src={IconEdit} className="icon icon-edit" />
-                      <span
-                        title={contactInfo.name}
-                        className="inline-block align-middle truncate max-w-[240px]"
-                      >
-                        {contactInfo.name}
-                      </span>
-                    </>
+        <div className="flex-1 overflow-auto">
+          <div className="section relative">
+            <div className={clsx('section-title')}>
+              {t('page.sendToken.sectionChain.title')}
+            </div>
+            <ChainSelectorInForm
+              value={chain}
+              onChange={handleChainChanged}
+              disabledTips={'Not supported'}
+              supportChains={undefined}
+              readonly={!!safeInfo}
+            />
+            <div className={clsx('section-title mt-[10px]')}>
+              {t('page.sendToken.sectionFrom.title')}
+            </div>
+            <AccountCard
+              icons={{
+                mnemonic: KEYRING_PURPLE_LOGOS[KEYRING_CLASS.MNEMONIC],
+                privatekey: KEYRING_PURPLE_LOGOS[KEYRING_CLASS.PRIVATE_KEY],
+                watch: KEYRING_PURPLE_LOGOS[KEYRING_CLASS.WATCH],
+              }}
+              alianName={sendAlianName}
+              isHideAmount={chainItem?.isTestnet}
+            />
+            <div className="section-title">
+              <span className="section-title__to">
+                {t('page.sendToken.sectionTo.title')}
+              </span>
+              <div className="flex flex-1 justify-end items-center">
+                {showContactInfo && !!contactInfo && (
+                  <div
+                    className={clsx('contact-info', {
+                      disabled: editBtnDisabled,
+                    })}
+                    onClick={handleEditContact}
+                  >
+                    {contactInfo && (
+                      <>
+                        <ThemeIcon
+                          src={RcIconEdit}
+                          className="icon icon-edit"
+                        />
+                        <span
+                          title={contactInfo.name}
+                          className="inline-block align-middle truncate max-w-[240px]"
+                        >
+                          {contactInfo.name}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+                <ThemeIcon
+                  className="icon icon-contact"
+                  src={whitelistEnabled ? RcIconWhitelist : RcIconContact}
+                  onClick={handleListContact}
+                />
+              </div>
+            </div>
+            <div className="to-address">
+              <Form.Item
+                name="to"
+                rules={[
+                  {
+                    required: true,
+                    message: t('page.sendToken.sectionTo.addrValidator__empty'),
+                  },
+                  {
+                    validator(_, value) {
+                      if (!value) return Promise.resolve();
+                      if (value && isValidAddress(value)) {
+                        // setAmountFocus(true);
+                        return Promise.resolve();
+                      }
+                      return Promise.reject(
+                        new Error(
+                          t('page.sendToken.sectionTo.addrValidator__invalid')
+                        )
+                      );
+                    },
+                  },
+                ]}
+              >
+                <AccountSearchInput
+                  placeholder={t(
+                    'page.sendToken.sectionTo.searchInputPlaceholder'
                   )}
+                  autoComplete="off"
+                  autoFocus
+                  spellCheck={false}
+                  onSelectedAccount={(account) => {
+                    const nextVals = {
+                      ...form.getFieldsValue(),
+                      to: account.address,
+                    };
+                    handleFormValuesChange({ to: nextVals.to }, nextVals);
+                    form.setFieldsValue(nextVals);
+                  }}
+                />
+              </Form.Item>
+              {toAddressIsValid && !toAddressInContactBook && (
+                <div className="tip-no-contact font-normal text-[12px] text-r-neutral-body pt-[12px]">
+                  <Trans i18nKey="page.sendToken.addressNotInContract" t={t}>
+                    Not on address list.{' '}
+                    <span
+                      onClick={handleClickAddContact}
+                      className={clsx(
+                        'ml-[2px] underline cursor-pointer text-r-blue-default'
+                      )}
+                    >
+                      Add to contacts
+                    </span>
+                  </Trans>
                 </div>
               )}
-              <img
-                className="icon icon-contact"
-                src={whitelistEnabled ? IconWhitelist : IconContact}
-                onClick={handleListContact}
-              />
             </div>
           </div>
-          <div className="to-address">
-            <Form.Item
-              name="to"
-              rules={[
-                { required: true, message: t('Please input address') },
-                {
-                  validator(_, value) {
-                    if (!value) return Promise.resolve();
-                    if (value && isValidAddress(value)) {
-                      setAmountFocus(true);
-                      return Promise.resolve();
-                    }
-                    return Promise.reject(
-                      new Error(t('This address is invalid'))
-                    );
-                  },
-                },
-              ]}
-            >
-              <Input
-                placeholder={t('Enter the address')}
-                autoComplete="off"
-                autoFocus
-                spellCheck={false}
-              />
-            </Form.Item>
-          </div>
-        </div>
-        <div
-          className={clsx('section', {
-            'mb-40':
-              !showWhitelistAlert &&
-              tokenValidationStatus === TOKEN_VALIDATION_STATUS.SUCCESS,
-          })}
-        >
-          <div className="section-title flex justify-between items-center">
-            <div className="token-balance whitespace-pre-wrap">
-              {isLoading ? (
-                <Skeleton.Input active style={{ width: 100 }} />
-              ) : (
-                <>
-                  {t('Balance')}:{' '}
-                  <span
-                    className="truncate max-w-[80px]"
-                    title={formatTokenAmount(
-                      new BigNumber(currentToken.raw_amount_hex_str || 0)
-                        .div(10 ** currentToken.decimals)
-                        .toFixed(),
-                      4
-                    )}
-                  >
-                    {formatTokenAmount(
-                      new BigNumber(currentToken.raw_amount_hex_str || 0)
-                        .div(10 ** currentToken.decimals)
-                        .toFixed(),
-                      4
-                    )}
-                  </span>
-                </>
-              )}
-              {currentToken.amount > 0 && (
-                <MaxButton src={ButtonMax} onClick={handleClickTokenBalance} />
-              )}
-            </div>
-            {showGasReserved &&
-              (selectedGasLevel ? (
-                <GasReserved
-                  token={currentToken}
-                  amount={tokenAmountForGas}
-                  onClickAmount={handleClickGasReserved}
-                />
-              ) : (
-                <Skeleton.Input active style={{ width: 180 }} />
-              ))}
-            {!showGasReserved && (balanceError || balanceWarn) ? (
-              <div className="balance-error">{balanceError || balanceWarn}</div>
-            ) : null}
-          </div>
-          <Form.Item name="amount">
-            {currentAccount && (
-              <TokenAmountInput
-                token={currentToken}
-                onTokenChange={handleCurrentTokenChange}
-                chainId={CHAINS[chain].serverId}
-                amountFocus={amountFocus}
-                inlinePrize
-              />
-            )}
-          </Form.Item>
-          <div className="token-info">
-            <img className="token-info__header" src={TokenInfoArrow} />
-            {!isNativeToken ? (
-              <div className="section-field">
-                <span>{t('Contract Address')}</span>
-                <span className="flex">
-                  <AddressViewer address={currentToken.id} showArrow={false} />
-                  <img
-                    src={IconCopy}
-                    className="icon icon-copy"
-                    onClick={handleCopyContractAddress}
+          <div className="section">
+            <div className="section-title flex justify-between items-center">
+              <div className="token-balance whitespace-pre-wrap">
+                {isLoading ? (
+                  <Skeleton.Input active style={{ width: 100 }} />
+                ) : (
+                  <>
+                    {t('page.sendToken.sectionBalance.title')}:{' '}
+                    <span
+                      className="truncate max-w-[90px]"
+                      title={balanceNumText}
+                    >
+                      {balanceNumText}
+                    </span>
+                  </>
+                )}
+                {currentToken.amount > 0 && (
+                  <MaxButton onClick={handleClickMaxButton}>
+                    {t('page.sendToken.max')}
+                  </MaxButton>
+                )}
+              </div>
+              {/* {showGasReserved &&
+                (selectedGasLevel ? (
+                  <GasReserved
+                    token={currentToken}
+                    amount={tokenAmountForGas}
+                    // onClickAmount={handleClickGasReserved}
                   />
+                ) : (
+                  <Skeleton.Input active style={{ width: 180 }} />
+                ))} */}
+              {/* {showGasReserved && !selectedGasLevel && (
+                <Skeleton.Input active style={{ width: 120 }} />
+              )} */}
+              {!clickedMax && (balanceError || balanceWarn) ? (
+                <div className="balance-error">
+                  {balanceError || balanceWarn}
+                </div>
+              ) : null}
+            </div>
+            <Form.Item name="amount">
+              {currentAccount && chainItem && (
+                <TokenAmountInput
+                  token={currentToken}
+                  onChange={handleAmountChange}
+                  onTokenChange={handleCurrentTokenChange}
+                  chainId={chainItem.serverId}
+                  excludeTokens={[]}
+                  inlinePrize
+                />
+              )}
+            </Form.Item>
+            <div className="token-info">
+              {!isNativeToken ? (
+                <div className="section-field">
+                  <span>
+                    {t('page.sendToken.tokenInfoFieldLabel.contract')}
+                  </span>
+                  <span className="flex">
+                    <AddressViewer
+                      address={currentToken.id}
+                      showArrow={false}
+                    />
+                    <img
+                      src={IconCopy}
+                      className="icon icon-copy"
+                      onClick={handleCopyContactAddress}
+                    />
+                  </span>
+                </div>
+              ) : (
+                ''
+              )}
+              <div className="section-field">
+                <span>{t('page.sendToken.tokenInfoFieldLabel.chain')}</span>
+                <span>
+                  {
+                    findChain({
+                      serverId: currentToken?.chain,
+                    })?.name
+                  }
                 </span>
               </div>
-            ) : (
-              ''
-            )}
-            <div className="section-field">
-              <span>{t('Chain')}</span>
-              <span>
-                {
-                  Object.values(CHAINS).find(
-                    (chain) => chain.serverId === currentToken.chain
-                  )?.name
-                }
-              </span>
-            </div>
-            <div className="section-field">
-              <span>{t('Price')}</span>
-              <span>
-                ${splitNumberByStep((currentToken.price || 0).toFixed(2))}
-              </span>
+              {!chainItem?.isTestnet ? (
+                <div className="section-field">
+                  <span>{t('page.sendToken.tokenInfoPrice')}</span>
+                  <span>
+                    ${splitNumberByStep((currentToken.price || 0).toFixed(2))}
+                  </span>
+                </div>
+              ) : null}
             </div>
           </div>
+          <SendTokenMessageForEoa
+            active={isShowMessageDataForToken}
+            formData={formSnapshot}
+          />
+          <SendTokenMessageForContract
+            active={isShowMessageDataForContract}
+            formData={formSnapshot}
+            chain={findChainByEnum(chain)}
+            userAddress={currentAccount?.address}
+          />
         </div>
-        <div
-          className={clsx(
-            isNativeToken &&
-              'w-full absolute bottom-[32px] left-1/2 -translate-x-1/2'
-          )}
-        >
-          {tokenValidationStatus !== TOKEN_VALIDATION_STATUS.SUCCESS && (
+
+        <div className="footer">
+          {showWhitelistAlert && (
             <div
-              className={clsx('token-validation', {
-                pending:
-                  tokenValidationStatus === TOKEN_VALIDATION_STATUS.PENDING,
-                faild: tokenValidationStatus === TOKEN_VALIDATION_STATUS.FAILD,
-              })}
-            >
-              {tokenValidationStatus === TOKEN_VALIDATION_STATUS.PENDING ? (
-                <>
-                  <SvgIconLoading
-                    className="icon icon-loading"
-                    viewBox="0 0 36 36"
-                  />
-                  {t('Verifying token info ...')}
-                </>
-              ) : (
-                <>
-                  <SvgAlert className="icon icon-alert" viewBox="0 0 14 14" />
-                  {t('Token verification failed')}
-                </>
+              className={clsx(
+                'whitelist-alert',
+                !whitelistEnabled || whitelistAlertContent.success
+                  ? 'granted'
+                  : 'cursor-pointer'
               )}
+              onClick={handleClickAllowTransferTo}
+            >
+              <p className="whitelist-alert__content text-center">
+                {whitelistEnabled && (
+                  <ThemeIcon
+                    src={
+                      whitelistAlertContent.success
+                        ? RcIconCheck
+                        : RcIconTemporaryGrantCheckbox
+                    }
+                    className="icon icon-check inline-block relative -top-1"
+                  />
+                )}
+                {whitelistAlertContent.content}
+              </p>
             </div>
           )}
-          {tokenValidationStatus === TOKEN_VALIDATION_STATUS.SUCCESS &&
-            showWhitelistAlert && (
-              <div
-                className={clsx(
-                  'whitelist-alert',
-                  !whitelistEnabled || whitelistAlertContent.success
-                    ? 'granted'
-                    : 'cursor-pointer'
-                )}
-                onClick={handleClickWhitelistAlert}
-              >
-                <p className="whitelist-alert__content text-center">
-                  {whitelistEnabled && (
-                    <img
-                      src={
-                        whitelistAlertContent.success
-                          ? IconCheck
-                          : IconTemporaryGrantCheckbox
-                      }
-                      className="icon icon-check inline-block relative -top-1"
-                    />
-                  )}
-                  {whitelistAlertContent.content}
-                </p>
-              </div>
-            )}
-          <div className="footer flex justify-center">
+          <div className="btn-wrapper w-[100%] px-[20px] flex justify-center">
             <Button
               disabled={!canSubmit}
               type="primary"
               htmlType="submit"
               size="large"
-              className="w-[200px]"
+              className="w-[100%] h-[48px] text-[16px]"
               loading={isSubmitLoading}
             >
-              {t('Send')}
+              {t('page.sendToken.sendButton')}
             </Button>
           </div>
         </div>
@@ -1054,22 +1658,21 @@ const SendToken = () => {
       />
       <ContactListModal
         visible={showListContactModal}
-        onCancel={() => setShowListContactModal(false)}
+        onCancel={handleCancelContact}
         onOk={handleConfirmContact}
       />
 
-      <GasSelector
-        visible={gasSelectorVisible}
-        onClose={handleGasSelectorClose}
-        chainId={CHAINS[chain].id}
-        onChange={(val) => {
-          setAmountFocus(false);
-          setGasSelectorVisible(false);
-          handleGasChange(val);
+      <SendReserveGasPopup
+        selectedItem={selectedGasLevel?.level as GasLevelType}
+        chain={chain}
+        limit={Math.max(estimatedGas, MINIMUM_GAS_LIMIT)}
+        onGasChange={(gasLevel) => {
+          handleGasLevelChanged(gasLevel);
         }}
         gasList={gasList}
-        gas={selectedGasLevel}
-        token={currentToken}
+        visible={reserveGasOpen}
+        rawHexBalance={currentToken.raw_amount_hex_str}
+        onClose={() => handleReserveGasClose()}
       />
     </div>
   );

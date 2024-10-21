@@ -1,18 +1,24 @@
 import { message, Table } from 'antd';
-import React from 'react';
-import { ReactComponent as CopySVG } from 'ui/assets/icon-copy-gray.svg';
+import React, { useEffect } from 'react';
+import { ReactComponent as RcCopySVG } from 'ui/assets/icon-copy-cc.svg';
 import ClipboardJS from 'clipboard';
 import { AddToRabby } from './AddToRabby';
 import { MAX_ACCOUNT_COUNT } from './AdvancedSettings';
 import { AccountListSkeleton } from './AccountListSkeleton';
-import { UsedChain } from '@debank/rabby-api/dist/types';
+import { UsedChain } from '@rabby-wallet/rabby-api/dist/types';
 import { isSameAddress, splitNumberByStep, useWallet } from '@/ui/utils';
 import dayjs from 'dayjs';
-import { ReactComponent as ArrowSVG } from 'ui/assets/ledger/arrow.svg';
+import { ReactComponent as RcArrowSVG } from 'ui/assets/ledger/arrow.svg';
 import clsx from 'clsx';
 import { fetchAccountsInfo, HDManagerStateContext } from './utils';
 import { AliasName } from './AliasName';
 import { ChainList } from './ChainList';
+import { KEYRING_CLASS } from '@/constant';
+import { useRabbyDispatch } from '@/ui/store';
+import { useTranslation } from 'react-i18next';
+import { detectClientOS } from '@/ui/utils/os';
+
+const isWin32 = detectClientOS() === 'win32';
 
 export interface Account {
   address: string;
@@ -37,6 +43,7 @@ export const AccountList: React.FC<Props> = ({
   const wallet = useWallet();
   const [list, setList] = React.useState<Account[]>([]);
   const infoRef = React.useRef<HTMLDivElement>(null);
+  const currentAccountsRef = React.useRef<Account[]>([]);
   const [infoColumnWidth, setInfoColumnWidth] = React.useState(0);
   const [infoColumnTop, setInfoColumnTop] = React.useState(0);
   const {
@@ -51,6 +58,11 @@ export const AccountList: React.FC<Props> = ({
     keyring,
   } = React.useContext(HDManagerStateContext);
   const [loadNum, setLoadNum] = React.useState(0);
+  const dispatch = useRabbyDispatch();
+
+  useEffect(() => {
+    currentAccountsRef.current = currentAccounts;
+  }, [currentAccounts]);
 
   const toggleHiddenInfo = React.useCallback(
     (e: React.MouseEvent, val: boolean) => {
@@ -59,6 +71,7 @@ export const AccountList: React.FC<Props> = ({
     },
     []
   );
+  const { t } = useTranslation();
 
   const copy = React.useCallback((value: string) => {
     const clipboard = new ClipboardJS('.copy-icon', {
@@ -68,7 +81,7 @@ export const AccountList: React.FC<Props> = ({
     });
     clipboard.on('success', () => {
       message.success({
-        content: 'Copied',
+        content: t('global.copied'),
         key: 'ledger-success',
       });
       clipboard.destroy();
@@ -77,7 +90,7 @@ export const AccountList: React.FC<Props> = ({
 
   React.useEffect(() => {
     if (!hiddenInfo) {
-      createTask(() => fetchAccountsInfo(wallet, data ?? []).then(setList));
+      fetchAccountsInfo(wallet, data ?? []).then(setList);
     } else {
       setList(data ?? []);
     }
@@ -93,9 +106,20 @@ export const AccountList: React.FC<Props> = ({
   const handleAddAccount = React.useCallback(
     async (checked: boolean, account: Account) => {
       if (checked) {
-        await createTask(() =>
-          wallet.unlockHardwareAccount(keyring, [account.index - 1], keyringId)
-        );
+        await createTask(async () => {
+          if (keyring === KEYRING_CLASS.MNEMONIC) {
+            await dispatch.importMnemonics.setSelectedAccounts([
+              account.address,
+            ]);
+            await dispatch.importMnemonics.confirmAllImportingAccountsAsync();
+          } else {
+            await wallet.unlockHardwareAccount(
+              keyring,
+              [account.index - 1],
+              keyringId
+            );
+          }
+        });
 
         await createTask(() =>
           wallet.requestKeyring(keyring, 'setCurrentUsedHDPathType', keyringId)
@@ -104,19 +128,28 @@ export const AccountList: React.FC<Props> = ({
         // update current account list
         await createTask(() => getCurrentAccounts());
         message.success({
-          content: 'The address is added to Rabby',
+          content: t('page.newAddress.hd.tooltip.added'),
         });
       } else {
-        await createTask(() => wallet.removeAddress(account.address, keyring));
+        await createTask(() =>
+          wallet.removeAddress(
+            account.address,
+            keyring,
+            undefined,
+            keyring !== KEYRING_CLASS.MNEMONIC &&
+              keyring !== KEYRING_CLASS.HARDWARE.KEYSTONE &&
+              keyring !== KEYRING_CLASS.HARDWARE.GRIDPLUS
+          )
+        );
         removeCurrentAccount(account.address);
         message.success({
-          content: 'The address is removed from Rabby',
+          content: t('page.newAddress.hd.tooltip.removed'),
         });
       }
 
       return;
     },
-    []
+    [keyring, keyringId, wallet]
   );
 
   const handleChangeAliasName = React.useCallback(
@@ -166,13 +199,16 @@ export const AccountList: React.FC<Props> = ({
 
   return (
     <Table<Account>
+      scroll={{ y: 'calc(100vh - 352px)' }}
       dataSource={list}
-      rowKey="index"
-      className="AccountList"
+      rowKey={(record) => record.address || record.index}
+      className={clsx('AccountList', isWin32 && 'is-win32')}
       loading={
         !preventLoading && loading
           ? {
-              tip: 'Waiting' + (loadNum ? ` - ${loadNum}%` : ''),
+              tip:
+                t('page.newAddress.hd.waiting') +
+                (loadNum ? ` - ${loadNum}%` : ''),
             }
           : false
       }
@@ -186,19 +222,19 @@ export const AccountList: React.FC<Props> = ({
             })}
             style={{
               top: `${infoColumnTop}px`,
-              width: `${infoColumnWidth + 1}px`,
+              width: `${infoColumnWidth + (isWin32 ? 6 : 1)}px`,
             }}
           >
             <td>
-              <ArrowSVG className="icon" />
-              <span>Click to get the information on-chain</span>
+              <RcArrowSVG className="icon text-r-neutral-title-1" />
+              <span>{t('page.newAddress.hd.clickToGetInfo')}</span>
             </td>
           </tr>
         ) : null
       }
     >
       <Table.Column<Account>
-        title="Add to Rabby"
+        title={t('page.newAddress.hd.addToRabby')}
         key="add"
         render={(val, record) =>
           record.address ? (
@@ -218,7 +254,11 @@ export const AccountList: React.FC<Props> = ({
       />
 
       <Table.ColumnGroup
-        title={<div className="column-group">Basic information</div>}
+        title={
+          <div className="column-group">
+            {t('page.newAddress.hd.basicInformation')}
+          </div>
+        }
         className="column-group-wrap"
       >
         <Table.Column
@@ -229,14 +269,14 @@ export const AccountList: React.FC<Props> = ({
           className="cell-index"
         />
         <Table.Column<Account>
-          title="Addresses"
+          title={t('page.newAddress.hd.addresses')}
           dataIndex="address"
           key="address"
           render={(value: string, record, index) =>
             value ? (
-              <div className="cell-address">
+              <div className="cell-address text-r-neutral-title-1">
                 <span>{value.toLowerCase()}</span>
-                <CopySVG
+                <RcCopySVG
                   onClick={() => copy(value.toLowerCase())}
                   className="copy-icon"
                 />
@@ -244,7 +284,10 @@ export const AccountList: React.FC<Props> = ({
             ) : (
               <AccountListSkeleton align="left" height={28} width={300}>
                 {index === currentIndex
-                  ? `Loading ${index + 1}/${MAX_ACCOUNT_COUNT} addresses`
+                  ? t('page.newAddress.hd.loadingAddress', [
+                      index + 1,
+                      MAX_ACCOUNT_COUNT,
+                    ])
                   : ''}
               </AccountListSkeleton>
             )
@@ -252,7 +295,7 @@ export const AccountList: React.FC<Props> = ({
         />
         <Table.Column<Account>
           width={200}
-          title="Notes"
+          title={t('page.newAddress.hd.notes')}
           dataIndex="aliasName"
           key="aliasName"
           className="cell-note"
@@ -266,6 +309,8 @@ export const AccountList: React.FC<Props> = ({
               <AliasName
                 address={record.address}
                 aliasName={account?.aliasName}
+                cacheAliasName={record?.aliasName}
+                disabled={!account}
                 onChange={(val) => handleChangeAliasName(val, record)}
               />
             );
@@ -278,13 +323,15 @@ export const AccountList: React.FC<Props> = ({
         title={
           <div ref={infoRef} className="column-group">
             <a href="#" onClick={(e) => toggleHiddenInfo(e, !hiddenInfo)}>
-              {hiddenInfo ? 'Get' : 'Hide'} on-chain information
+              {hiddenInfo
+                ? t('page.newAddress.hd.getOnChainInformation')
+                : t('page.newAddress.hd.hideOnChainInformation')}
             </a>
           </div>
         }
       >
         <Table.Column<Account>
-          title="Used chains"
+          title={t('page.newAddress.hd.usedChains')}
           dataIndex="usedChains"
           key="usedChains"
           width={140}
@@ -297,7 +344,7 @@ export const AccountList: React.FC<Props> = ({
           }
         />
         <Table.Column<Account>
-          title="First transaction time"
+          title={t('page.newAddress.hd.firstTransactionTime')}
           dataIndex="firstTxTime"
           key="firstTxTime"
           width={160}
@@ -310,7 +357,7 @@ export const AccountList: React.FC<Props> = ({
           }
         />
         <Table.Column<Account>
-          title="Balance"
+          title={t('page.newAddress.hd.balance')}
           dataIndex="balance"
           key="balance"
           width={200}
@@ -318,7 +365,7 @@ export const AccountList: React.FC<Props> = ({
           render={(balance, record) =>
             hiddenInfo ? (
               <AccountListSkeleton width={100} />
-            ) : record.chains?.length ? (
+            ) : record.chains?.length && balance ? (
               `$${splitNumberByStep(balance.toFixed(2))}`
             ) : null
           }

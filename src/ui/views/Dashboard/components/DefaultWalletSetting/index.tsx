@@ -1,43 +1,36 @@
-import React, { useEffect, useState } from 'react';
-import './style.less';
-import IconDefaultRabby from 'ui/assets/icon-default-rabby.svg';
-import IconDefaultMetamask from 'ui/assets/icon-default-metamask.svg';
-import IconRabby from 'ui/assets/dashboard/rabby.svg';
-import IconMetamask from 'ui/assets/dashboard/icon-metamask.svg';
-import { Checkbox, Popup } from '@/ui/component';
-import { Button, message } from 'antd';
 import { useWallet } from '@/ui/utils';
+import { message } from 'antd';
+import React, { useEffect, useState } from 'react';
+import IconDefaultMetamask from 'ui/assets/icon-default-metamask.png';
+import IconDefaultRabby from 'ui/assets/icon-default-rabby.png';
+import './style.less';
+import { useTranslation } from 'react-i18next';
 
 const DefaultWalletSetting = () => {
-  const [visible, setVisible] = useState(false);
   const [isConflict, setIsConflict] = useState(false);
   const [isDefault, setIsDefault] = useState(true);
-  const [needCheck, setNeedCheck] = useState(true);
   const wallet = useWallet();
+  const { t } = useTranslation();
 
   const init = () => {
     wallet.isDefaultWallet().then(setIsDefault);
     wallet.getHasOtherProvider().then(setIsConflict);
-    wallet.getNeedSwitchWalletCheck().then(setNeedCheck);
   };
 
-  const handleFlip = async (e) => {
+  const handleFlip = async (e: React.MouseEvent) => {
     e.preventDefault();
-    if (needCheck) {
-      setVisible(true);
-    } else {
-      handleSubmit();
-    }
+    handleSubmit();
   };
 
   const handleSubmit = async () => {
     await wallet.setIsDefaultWallet(!isDefault);
     setIsDefault(!isDefault);
-    setVisible(false);
     message.success({
       icon: <i />,
       content: (
-        <span className="text-white">Refresh the web page to take effect</span>
+        <span className="text-white">
+          {t('page.dashboard.home.refreshTheWebPageToTakeEffect')}
+        </span>
       ),
       duration: 2,
     });
@@ -59,57 +52,11 @@ const DefaultWalletSetting = () => {
             alt=""
             className="w-[20px] h-[20px] mr-[8px]"
           />
-          Rabby is in use and Metamask is banned
+          {t('page.dashboard.home.rabbyIsInUseAndMetamaskIsBanned')}
           <a href="#" onClick={handleFlip}>
-            Flip
+            {t('page.dashboard.home.flip')}
           </a>
         </div>
-        <Popup
-          visible={visible}
-          className="rabby-default-wallet-setting-modal"
-          height={348}
-          onCancel={() => setVisible(false)}
-          title={
-            <div className="flex items-center justify-center gap-[8px]">
-              <img src={IconMetamask} className="w-[24px] h-[24px]" alt="" />
-              Flip to use MetaMask
-            </div>
-          }
-        >
-          <div className="desc">
-            It has been detected that you also installed MetaMask. Your current
-            default wallet is Rabby. Please confirm if you want to flip to use
-            MetaMask as your default wallet.
-          </div>
-          <div className="checkbox">
-            <Checkbox
-              checked={!needCheck}
-              width={'16px'}
-              height={'16px'}
-              onChange={(v) => {
-                wallet.updateNeedSwitchWalletCheck(!v);
-                setNeedCheck(!v);
-              }}
-            >
-              Do not remind me again
-            </Checkbox>
-          </div>
-          <div className="footer">
-            <Button
-              type="primary"
-              ghost
-              className="rabby-btn-ghost"
-              block
-              size="large"
-              onClick={() => setVisible(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="primary" block size="large" onClick={handleSubmit}>
-              Confirm
-            </Button>
-          </div>
-        </Popup>
       </>
     );
   }
@@ -121,57 +68,11 @@ const DefaultWalletSetting = () => {
           alt=""
           className="w-[20px] h-[20px] mr-[8px]"
         />
-        MetaMask is in use and Rabby is banned
+        {t('page.dashboard.home.metamaskIsInUseAndRabbyIsBanned')}
         <a href="#" onClick={handleFlip}>
-          Flip
+          {t('page.dashboard.home.flip')}
         </a>
       </div>
-      <Popup
-        visible={visible}
-        className="rabby-default-wallet-setting-modal is-flip-to-rabby"
-        height={348}
-        onCancel={() => setVisible(false)}
-        title={
-          <div className="flex items-center justify-center gap-[8px]">
-            <img src={IconRabby} className="w-[24px] h-[24px]" alt="" />
-            Flip to use Rabby
-          </div>
-        }
-      >
-        <div className="desc">
-          It has been detected that you also installed MetaMask. Your current
-          default wallet is MetaMask. Please confirm if you want to flip to use
-          Rabby as your default wallet.
-        </div>
-        <div className="checkbox">
-          <Checkbox
-            checked={!needCheck}
-            width={'16px'}
-            height={'16px'}
-            onChange={(v) => {
-              wallet.updateNeedSwitchWalletCheck(!v);
-              setNeedCheck(!v);
-            }}
-          >
-            Do not remind me again
-          </Checkbox>
-        </div>
-        <div className="footer">
-          <Button
-            type="primary"
-            ghost
-            className="rabby-btn-ghost"
-            block
-            size="large"
-            onClick={() => setVisible(false)}
-          >
-            Cancel
-          </Button>
-          <Button type="primary" block size="large" onClick={handleSubmit}>
-            Confirm
-          </Button>
-        </div>
-      </Popup>
     </>
   );
 };

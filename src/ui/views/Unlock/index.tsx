@@ -14,6 +14,7 @@ const Unlock = () => {
   const UiType = getUiType();
   const { t } = useTranslation();
   const history = useHistory();
+  const isUnlockingRef = useRef(false);
 
   useEffect(() => {
     if (!inputEl.current) return;
@@ -29,25 +30,33 @@ const Unlock = () => {
       }
     },
     onError(err) {
+      console.log('error', err);
       form.setFields([
         {
           name: 'password',
-          errors: [err?.message || t('incorrect password')],
+          errors: [err?.message || t('page.unlock.password.error')],
         },
       ]);
     },
   });
 
+  const handleSubmit = async ({ password }: { password: string }) => {
+    if (isUnlockingRef.current) return;
+    isUnlockingRef.current = true;
+    await run(password);
+    isUnlockingRef.current = false;
+  };
+
   return (
-    <div className="unlock">
+    <div className="unlock page-has-ant-input">
       <div className="header">
         <img src="./images/welcome-image.svg" className="image" />
       </div>
       <Form
         autoComplete="off"
-        className="bg-gray-bg flex-1"
+        className="bg-r-neutral-bg-2 flex-1"
         form={form}
-        onFinish={({ password }) => run(password)}
+        onFinish={handleSubmit}
       >
         <Form.Item
           className="mt-[34px] mx-28"
@@ -55,12 +64,13 @@ const Unlock = () => {
           rules={[
             {
               required: true,
-              message: t('Enter the Password to Unlock'),
+              message: t('page.unlock.password.required'),
             },
           ]}
         >
           <Input
-            placeholder={t('Enter the Password to Unlock')}
+            placeholder={t('page.unlock.password.placeholder')}
+            className="bg-r-neutral-card-1 hover:border-rabby-blue-default focus:border-rabby-blue-default placeholder-r-neutral-foot"
             size="large"
             type="password"
             ref={inputEl}
@@ -74,7 +84,7 @@ const Unlock = () => {
             type="primary"
             size="large"
           >
-            {t('Unlock')}
+            {t('page.unlock.btn.unlock')}
           </Button>
         </Form.Item>
       </Form>

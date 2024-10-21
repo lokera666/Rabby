@@ -1,4 +1,4 @@
-import { Tabs, browser, Windows } from 'webextension-polyfill-ts';
+import browser, { Tabs, Windows } from 'webextension-polyfill';
 import { WalletController, WalletControllerType } from './index';
 import { getOriginFromUrl } from '@/utils';
 
@@ -20,7 +20,10 @@ export const getCurrentConnectSite = async (
   );
 };
 
-export const openInTab = async (url, needClose = true): Promise<Tabs.Tab> => {
+export const openInTab = async (
+  url?: string,
+  needClose = true
+): Promise<Tabs.Tab> => {
   const tab = await browser.tabs.create({
     active: true,
     url,
@@ -39,9 +42,13 @@ export const getCurrentWindow = async (): Promise<number | undefined> => {
   return id;
 };
 
-export const openInternalPageInTab = (path: string, useWebapi = true) => {
+export const openInternalPageInTab = (
+  path: string,
+  useWebapi = true,
+  needClose = true
+) => {
   if (useWebapi) {
-    openInTab(`./index.html#/${path}`);
+    openInTab(`./index.html#/${path}`, needClose);
   } else {
     window.open(`./index.html#/${path}`);
   }

@@ -1,26 +1,18 @@
-import React, { useState } from 'react';
-import { useHistory } from 'react-router-dom';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMedia } from 'react-use';
 import styled from 'styled-components';
 import clsx from 'clsx';
-
-import { StrayPageWithButton, Field, Checkbox, Navbar } from 'ui/component';
-import { useWallet } from 'ui/utils';
-import {
-  connectStore,
-  useRabbyDispatch,
-  useRabbyGetter,
-  useRabbySelector,
-} from 'ui/store';
-import LessPalette from 'ui/style/var-defs';
+import { Field, Checkbox } from 'ui/component';
+import { connectStore, useRabbyDispatch } from 'ui/store';
+import { Button } from 'antd';
+import LogoSVG from '@/ui/assets/logo.svg';
 
 const QuestionsWrapper = styled.div`
   .field-slot {
     font-weight: 500;
     font-size: 13px;
     line-height: 16px;
-    color: #13141a;
+    color: var(--r-neutral-title-1);
   }
 `;
 
@@ -29,7 +21,7 @@ const RiskTipText = styled.p`
   font-size: 17px;
   line-height: 24px;
   text-align: center;
-  color: ${LessPalette['@color-title']};
+  color: var(--r-neutral-title-1);
 `;
 
 function useQuestionsCheck() {
@@ -39,28 +31,22 @@ function useQuestionsCheck() {
     return [
       {
         index: 1 as const,
-        content: t('If I lose my seed phrase, my assets will be lost forever.'),
+        content: t('page.newAddress.seedPhrase.importQuestion1'),
         checked: true,
       },
       {
         index: 2 as const,
-        content: t(
-          'If I share my seed phrase with others, my assets will be stolen.'
-        ),
+        content: t('page.newAddress.seedPhrase.importQuestion2'),
         checked: true,
       },
       {
         index: 3 as const,
-        content: t(
-          'The seed phrase is only stored on my computer, and Rabby has no access to it.'
-        ),
+        content: t('page.newAddress.seedPhrase.importQuestion3'),
         checked: true,
       },
       {
         index: 4 as const,
-        content: t(
-          'If I uninstall Rabby without backing up the seed phrase, Rabby cannot retrieve it for me.'
-        ),
+        content: t('page.newAddress.seedPhrase.importQuestion4'),
         checked: true,
       },
     ];
@@ -90,77 +76,35 @@ function useQuestionsCheck() {
 }
 
 const RiskCheck = () => {
-  const history = useHistory();
-  const wallet = useWallet();
-  const { t } = useTranslation();
-  const [errMsg, setErrMsg] = useState('');
-  const isWide = useMedia('(min-width: 401px)');
-
   const dispatch = useRabbyDispatch();
-
+  const { t } = useTranslation();
   const {
     questionChecks,
     isAllChecked,
     toggleCheckedByIndex,
   } = useQuestionsCheck();
 
-  const { mnemonics } = useRabbySelector((s) => ({
-    mnemonics: s.createMnemonics.mnemonics,
-  }));
-
-  const onSubmit = async (values: { mnemonics: string[] }) => {
-    if (!values.mnemonics || values.mnemonics.length <= 0) {
-      setErrMsg(t('Please select words'));
-      return;
-    }
-    if (values.mnemonics.join(' ') !== mnemonics) {
-      setErrMsg(t('Verification failed'));
-      return;
-    }
-    const accounts = await wallet.createKeyringWithMnemonics(mnemonics);
-
-    history.replace({
-      pathname: history.location.pathname,
-      state: {
-        step: 'display',
-      },
-    });
-  };
-
   return (
-    <StrayPageWithButton
-      custom={isWide}
-      className={clsx(isWide && 'rabby-stray-page', 'stray-page')}
-      formProps={{
-        validateTrigger: 'onBlur',
-      }}
-      onSubmit={onSubmit}
-      hasDivider
-      nextDisabled={!isAllChecked}
-      onNextClick={() => {
-        dispatch.createMnemonics.stepTo('display');
-      }}
-      noPadding
-      NextButtonContent="Show Seed Phrase"
-    >
-      <Navbar
-        onBack={async () => {
-          await dispatch.createMnemonics.cleanCreateAsync();
-          if (history.length > 1) {
-            history.goBack();
-          } else {
-            history.replace('/');
-          }
-        }}
+    <div className="mx-auto w-[600px]">
+      <img src={LogoSVG} alt="Rabby" className="mb-[12px]" />
+      <div
+        className={clsx(
+          'px-[120px] pt-[32px] pb-[40px]',
+          'bg-r-neutral-card-1 rounded-[12px]'
+        )}
       >
-        {t('Create New Address')}
-      </Navbar>
-      <div className="rabby-container">
-        <div className="pt-28 px-20">
+        <h1
+          className={clsx(
+            'flex items-center justify-center',
+            'space-x-[16px] mb-[24px]',
+            'text-[20px] text-r-neutral-title-1'
+          )}
+        >
+          <span>{t('page.newAddress.createNewSeedPhrase')}</span>
+        </h1>
+        <div>
           <RiskTipText className="mb-32">
-            {t(
-              'Before starting, please read and keep the following security points in mind'
-            )}
+            {t('page.newAddress.seedPhrase.riskTips')}
           </RiskTipText>
           <QuestionsWrapper>
             {questionChecks.map((q) => {
@@ -171,15 +115,16 @@ const RiskCheck = () => {
                 <Field
                   key={`item-${q.index}`}
                   className={clsx(
-                    'bg-white flex justify-between items-center px-12 py-16 border transition-colors',
-                    'border-transparent'
+                    'bg-r-neutral-card-2 flex justify-between items-center p-16 border transition-colors',
+                    'border-transparent hover:border-rabby-blue-default hover:bg-r-blue-light-1',
+                    'text-13'
                   )}
                   leftIcon={
                     <Checkbox
                       checked={q.checked}
                       width={'20px'}
                       height={'20px'}
-                      background="#27C193"
+                      background="var(--r-green-default, #2ABB7F)"
                       onChange={handleClickItem}
                     />
                   }
@@ -192,8 +137,19 @@ const RiskCheck = () => {
             })}
           </QuestionsWrapper>
         </div>
+        <div className="text-center mt-[76px]">
+          <Button
+            type="primary"
+            size="large"
+            disabled={!isAllChecked}
+            onClick={() => dispatch.createMnemonics.stepTo('display')}
+            className="py-[13px] px-[56px] h-auto"
+          >
+            {t('page.newAddress.seedPhrase.showSeedPhrase')}
+          </Button>
+        </div>
       </div>
-    </StrayPageWithButton>
+    </div>
   );
 };
 

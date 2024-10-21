@@ -4,8 +4,12 @@ import {
   permissionService,
   keyringService,
   preferenceService,
+  contextMenuService,
 } from 'background/service';
 import providerController from './controller';
+import { findChainByEnum } from '@/utils/chain';
+import { appIsDev } from '@/utils/env';
+import wallet from '../wallet';
 
 const networkIdMap: {
   [key: string]: string;
@@ -19,6 +23,7 @@ const tabCheckin = ({
   origin,
 }) => {
   session.setProp({ origin, name, icon });
+  contextMenuService.createOrUpdate(origin);
 };
 
 const getProviderState = async (req) => {
@@ -35,8 +40,25 @@ const getProviderState = async (req) => {
     networkVersion = await providerController.netVersion(req);
     networkIdMap[chainEnum] = networkVersion;
   }
+
+  // TODO: should we throw error here?
+  let chainItem = findChainByEnum(chainEnum);
+
+  if (!chainItem) {
+    if (appIsDev) {
+      throw new Error(
+        `[internalMethod::getProviderState] chain ${chainEnum} not found`
+      );
+    } else {
+      console.warn(
+        `[internalMethod::getProviderState] chain ${chainEnum} not found`
+      );
+      chainItem = CHAINS.ETH;
+    }
+  }
+
   return {
-    chainId: CHAINS[chainEnum].hex,
+    chainId: chainItem.hex,
     isUnlocked,
     accounts: isUnlocked ? await providerController.ethAccounts(req) : [],
     networkVersion,
@@ -53,14 +75,20 @@ const providerOverwrite = ({
 };
 
 const hasOtherProvider = () => {
+  const prev = preferenceService.getHasOtherProvider();
   preferenceService.setHasOtherProvider(true);
   const isRabby = preferenceService.getIsDefaultWallet();
-  setPopupIcon(isRabby ? 'rabby' : 'metamask');
+  if (!prev) {
+    contextMenuService.init();
+  }
+  if (wallet.isUnlocked()) {
+    setPopupIcon(isRabby ? 'rabby' : 'metamask');
+  }
   return true;
 };
 
-const isDefaultWallet = () => {
-  return preferenceService.getIsDefaultWallet();
+const isDefaultWallet = ({ origin }) => {
+  return preferenceService.getIsDefaultWallet(origin);
 };
 
 export default {

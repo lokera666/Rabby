@@ -1,9 +1,12 @@
-import { Tooltip } from 'antd';
+import { Tooltip, TooltipProps } from 'antd';
 import { CHAINS_ENUM, CHAINS } from '@debank/common';
 import clsx from 'clsx';
 import React, { useEffect, useState, useRef } from 'react';
 import styled from 'styled-components';
 import { useWallet } from '@/ui/utils';
+import { findChain, findChainByEnum } from '@/utils/chain';
+import { TooltipWithMagnetArrow } from './Tooltip/TooltipWithMagnetArrow';
+import { t } from 'i18next';
 
 const ChainIconWrapper = styled.div`
   position: relative;
@@ -84,10 +87,13 @@ const TooltipContent = styled.div`
 
 interface Props {
   chain: CHAINS_ENUM;
-  customRPC: string | undefined;
+  customRPC?: string | undefined;
   size?: 'normal' | 'small';
   showCustomRPCToolTip?: boolean;
   nonce?: number;
+  innerClassName?: string;
+  tooltipTriggerElement?: 'chain' | 'dot';
+  tooltipProps?: Omit<TooltipProps, 'title' | 'overlay'>;
 }
 
 const CustomRPCTooltipContent = ({
@@ -109,16 +115,19 @@ const CustomRPCTooltipContent = ({
 
 const ChainIcon = ({
   chain,
-  customRPC,
+  customRPC: _customRPC,
   size = 'normal',
   showCustomRPCToolTip = false,
   nonce,
+  innerClassName,
+  tooltipTriggerElement = 'dot',
+  tooltipProps,
 }: Props) => {
   const wallet = useWallet();
   const [customRPCAvaliable, setCustomRPCAvaliable] = useState(true);
   const [customRPCVlidated, setCustomRPCValidated] = useState(false);
   const chainRef = useRef(chain);
-  const rpcRef = useRef(customRPC);
+  const rpcRef = useRef(_customRPC);
 
   const pingCustomRPC = async (c: CHAINS_ENUM, rpc: string | undefined) => {
     setCustomRPCValidated(false);
@@ -144,35 +153,90 @@ const ChainIcon = ({
 
   useEffect(() => {
     chainRef.current = chain;
-    rpcRef.current = customRPC;
-    pingCustomRPC(chain, customRPC);
-  }, [chain, customRPC, nonce]);
+    rpcRef.current = _customRPC;
+    pingCustomRPC(chain, _customRPC);
+  }, [chain, _customRPC, nonce]);
 
-  return (
-    <Tooltip
-      placement="top"
-      overlayClassName={clsx('rectangle')}
-      title={
-        customRPC && showCustomRPCToolTip ? (
-          <CustomRPCTooltipContent
-            rpc={customRPC}
-            avaliable={customRPCAvaliable}
+  const { chainItem, customRPC } = React.useMemo(() => {
+    const item = findChain({ enum: chain });
+    return {
+      chainItem: item,
+      customRPC: item ? _customRPC : undefined,
+    };
+  }, [chain, _customRPC]);
+
+  if (tooltipTriggerElement === 'chain') {
+    return (
+      <Tooltip
+        placement="top"
+        overlayClassName={clsx('rectangle')}
+        {...tooltipProps}
+        title={
+          customRPC && showCustomRPCToolTip ? (
+            <CustomRPCTooltipContent
+              rpc={customRPC}
+              avaliable={customRPCAvaliable}
+            />
+          ) : null
+        }
+      >
+        <ChainIconWrapper className="chain-icon-comp">
+          <ChainIconEle
+            className={clsx(size, innerClassName)}
+            src={chainItem?.logo || ''}
           />
-        ) : null
-      }
-    >
-      <ChainIconWrapper>
-        <ChainIconEle className={clsx(size)} src={CHAINS[chain].logo} />
-        {customRPC &&
-          customRPCVlidated &&
-          (customRPCAvaliable ? (
-            <AvaliableIcon className={clsx(size)} />
-          ) : (
-            <UnavaliableIcon className={clsx(size)} />
-          ))}
-      </ChainIconWrapper>
-    </Tooltip>
-  );
+          {customRPC &&
+            customRPCVlidated &&
+            (customRPCAvaliable ? (
+              <AvaliableIcon className={clsx(size)} />
+            ) : (
+              <UnavaliableIcon className={clsx(size)} />
+            ))}
+        </ChainIconWrapper>
+      </Tooltip>
+    );
+  } else {
+    return (
+      <div className="chain-icon-comp relative">
+        <Tooltip
+          placement="top"
+          overlayClassName={clsx('rectangle')}
+          title={chainItem?.name}
+          align={{
+            offset: [0, 2],
+          }}
+        >
+          <ChainIconWrapper>
+            <ChainIconEle
+              className={clsx(size, innerClassName)}
+              src={chainItem?.logo || ''}
+            />
+          </ChainIconWrapper>
+        </Tooltip>
+        <TooltipWithMagnetArrow
+          placement="top"
+          overlayClassName={clsx('rectangle')}
+          {...tooltipProps}
+          title={
+            customRPC && showCustomRPCToolTip ? (
+              <CustomRPCTooltipContent
+                rpc={customRPC}
+                avaliable={customRPCAvaliable}
+              />
+            ) : null
+          }
+        >
+          {customRPC &&
+            customRPCVlidated &&
+            (customRPCAvaliable ? (
+              <AvaliableIcon className={clsx(size)} />
+            ) : (
+              <UnavaliableIcon className={clsx(size)} />
+            ))}
+        </TooltipWithMagnetArrow>
+      </div>
+    );
+  }
 };
 
 export default ChainIcon;

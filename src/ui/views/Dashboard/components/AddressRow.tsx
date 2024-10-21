@@ -6,8 +6,8 @@ import { Account } from '@/background/service/preference';
 
 import IconSuccess from 'ui/assets/success.svg';
 import IconAddressCopy from 'ui/assets/address-copy.png';
-import IconPinned from 'ui/assets/icon-pinned.svg';
-import IconPinnedFill from 'ui/assets/icon-pinned-fill.svg';
+import { ReactComponent as RcIconPinned } from 'ui/assets/icon-pinned.svg';
+import { ReactComponent as RcIconPinnedFill } from 'ui/assets/icon-pinned-fill.svg';
 
 import { splitNumberByStep, useWallet } from 'ui/utils';
 import { message } from 'antd';
@@ -19,6 +19,8 @@ import {
 import { AddressViewer } from '@/ui/component';
 import { connectStore, useRabbyDispatch, useRabbySelector } from '@/ui/store';
 import useIsMountedRef from '@/ui/hooks/useMountedRef';
+import { useTranslation } from 'react-i18next';
+import ThemeIcon from '@/ui/component/ThemeMode/ThemeIcon';
 
 function AddressRow({
   data,
@@ -47,6 +49,7 @@ function AddressRow({
       account.address === highlighted.address &&
       account.brandName === highlighted.brandName
   );
+  const { t } = useTranslation();
 
   const handleCopyContractAddress = React.useCallback(() => {
     const clipboard = new ClipboardJS('.address-item', {
@@ -65,7 +68,7 @@ function AddressRow({
           <div>
             <div className="flex gap-4 mb-4">
               <img src={IconSuccess} alt="" />
-              Copied
+              {t('global.copied')}
             </div>
             <div className="text-white">{account?.address}</div>
           </div>
@@ -78,7 +81,7 @@ function AddressRow({
   const isMountedRef = useIsMountedRef();
   const [hdPathIndex, setHDPathIndex] = React.useState(null);
   React.useEffect(() => {
-    if (KEYRING_WITH_INDEX.includes(account.type)) {
+    if (KEYRING_WITH_INDEX.includes(account.type as any)) {
       wallet.getIndexByAddress(account.address, account.type).then((index) => {
         if (!isMountedRef.current) return;
         if (index !== null) {
@@ -121,7 +124,7 @@ function AddressRow({
               )}
             </div>
             <span className={clsx('ml-[3px] favorite-star flex-shrink-0')}>
-              <img
+              <ThemeIcon
                 onClick={(e) => {
                   e.stopPropagation();
                   if (account)
@@ -130,7 +133,7 @@ function AddressRow({
                       brandName: account.brandName,
                     });
                 }}
-                src={favorited ? IconPinnedFill : IconPinned}
+                src={favorited ? RcIconPinnedFill : RcIconPinned}
                 className={clsx('w-[12px] h-[12px]')}
               />
             </span>
@@ -162,4 +165,7 @@ function AddressRow({
   );
 }
 
+/**
+ * @deprecated
+ */
 export default connectStore()(AddressRow);

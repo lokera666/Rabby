@@ -4,6 +4,36 @@
   .page();
   height: 100vh;
 
+  .tabs {
+    display: flex;
+    gap: 16px 10px;
+    flex-wrap: wrap;
+    padding-bottom: 8px;
+
+    &-item {
+      padding: 4px 0;
+      font-weight: 400;
+      font-size: 12px;
+      line-height: 14px;
+      color: var(--r-neutral-body, #3e495e);
+      position: relative;
+      cursor: pointer;
+
+      &.is-active {
+        color: var(--r-blue-default, #7084ff);
+        &::after {
+          position: absolute;
+          content: '';
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 2px;
+          background-color: var(--r-blue-default, #7084ff);
+        }
+      }
+    }
+  }
+
   &-qrcode-popover {
     width: 160px;
     height: 160px;
@@ -16,23 +46,23 @@
   }
   .rabby-list {
     border-radius: 6px;
-    background-color: #fff;
+    background-color: var(--r-neutral-card-1, #fff);
     margin-bottom: 20px;
     &-item {
       padding-left: 16px;
       border-radius: 6px;
       border: 1px solid transparent;
 
-      &:hover {
+      &:not(.no-hover):hover {
         background-color: rgba(134, 151, 255, 0.2);
-        border-color: #8697ff;
+        border-color: var(--r-blue-default, #7084ff);
       }
 
       &-label {
         font-weight: 500;
         font-size: 14px;
         line-height: 16px;
-        color: @color-title;
+        color: var(--r-neutral-title-1, #192945);
         gap: 4px;
         display: flex;
         flex-direction: column;
@@ -45,7 +75,7 @@
         font-weight: 400;
         font-size: 14px;
         line-height: 16px;
-        color: @color-body;
+        color: var(--r-neutral-body, #3e495e);
       }
       &-extra {
         max-width: 230px;
@@ -56,22 +86,37 @@
       &-arrow {
         svg {
           path {
-            fill: @color-comment-1;
+            fill: var(--r-neutral-foot, #6a7587);
           }
         }
       }
       &-content {
         padding: 12px 16px 12px 0;
-        border-bottom: 1px solid #e5e9ef;
-        border-bottom: 0.5px solid #e5e9ef;
+
         display: flex;
         min-height: 56px;
         align-items: center;
       }
+      & .connect-status {
+        margin-top: -12px;
+        margin-right: 16px;
+      }
+      & > div:last-child {
+        border-bottom: 1px solid var(--r-neutral-line, #d3d8e0);
+        border-bottom: 0.5px solid var(--r-neutral-line, #d3d8e0);
+      }
       &:last-child {
-        .rabby-list-item-content {
+        div {
           border: none;
         }
+      }
+
+      .name-and-address .name {
+        color: var(--r-neutral-body, #3e495e);
+      }
+
+      .name-and-address .address {
+        color: var(--r-neutral-foot, #6a7587);
       }
     }
   }
@@ -82,7 +127,7 @@
     font-weight: 400;
     font-size: 14px;
     line-height: 20px;
-    color: @color-body;
+    color: var(--r-neutral-body, #D3D8E0);
     margin-bottom: 20px;
   }
 

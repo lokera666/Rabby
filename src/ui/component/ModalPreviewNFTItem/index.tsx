@@ -5,10 +5,11 @@ import { TransferingNFTItem } from 'background/service/openapi';
 import { Modal, ModalProps } from 'antd';
 import NFTAvatar from '@/ui/views/Dashboard/components/NFT/NFTAvatar';
 
-import LessPalette from '@/ui/style/var-defs';
-import { getChain } from 'utils';
+import { getChain } from '@/utils';
 import clsx from 'clsx';
 import { splitNumberByStep } from '@/ui/utils';
+import { useTranslation } from 'react-i18next';
+import { useThemeMode } from '@/ui/hooks/usePreference';
 
 const PreviewModal = styled(Modal)`
   .ant-modal-body {
@@ -20,14 +21,17 @@ const PreviewCard = styled.div`
   .nft-avatar {
     width: 100%;
     height: 306px;
+    border-color: var(--r-neutral-line);
+    border-radius: 6px;
+    background-color: var(--r-neutral-bg1);
   }
 
   .nft-txpreview-title {
     font-weight: 500;
     font-size: 15px;
     line-height: 18px;
-    color: ${LessPalette['@color-title']};
-    border-bottom: 1px solid ${LessPalette['@color-border']};
+    color: var(--r-neutral-title1);
+    border-bottom: 0.5px solid var(--r-neutral-line);
     padding-top: 16px;
     padding-bottom: 12px;
     white-space: nowrap;
@@ -51,7 +55,7 @@ const PreviewCard = styled.div`
     font-weight: 500;
     font-size: 12px;
     line-height: 14px;
-    color: ${LessPalette['@color-title']};
+    color: var(--r-neutral-title1);
   }
   .nft-txpreview-property-value {
     white-space: nowrap;
@@ -59,7 +63,7 @@ const PreviewCard = styled.div`
     text-overflow: ellipsis;
     font-size: 12px;
     line-height: 14px;
-    color: ${LessPalette['@color-comment-1']};
+    color: var(--r-neutral-foot);
   }
 `;
 
@@ -73,6 +77,9 @@ export default function ModalPreviewNFTItem({
     return { chainName };
   }, [collectProperty]);
 
+  const { t } = useTranslation();
+  const { isDarkTheme } = useThemeMode();
+
   return (
     <PreviewModal
       {...props}
@@ -83,7 +90,10 @@ export default function ModalPreviewNFTItem({
       closable={false}
       okText={null}
       footer={null}
-      className={clsx('nft-txpreview-modal', props.className)}
+      className={clsx(
+        'nft-txpreview-modal modal-support-darkmode',
+        props.className
+      )}
     >
       <PreviewCard className="nft-txpreview-card">
         <NFTAvatar
@@ -95,24 +105,32 @@ export default function ModalPreviewNFTItem({
         <div className="nft-txpreview-title">{nft?.name || '-'}</div>
         <div className="nft-txpreview-properties">
           <div className="nft-txpreview-property">
-            <div className="nft-txpreview-property-label">Collection</div>
+            <div className="nft-txpreview-property-label">
+              {t('component.ModalPreviewNFTItem.FieldLabel.Collection')}
+            </div>
             <div className="nft-txpreview-property-value">
               {collectProperty?.name || '-'}
             </div>
           </div>
           <div className="nft-txpreview-property">
-            <div className="nft-txpreview-property-label">Chain</div>
+            <div className="nft-txpreview-property-label">
+              {t('component.ModalPreviewNFTItem.FieldLabel.Chain')}
+            </div>
             <div className="nft-txpreview-property-value">{chainName}</div>
           </div>
           <div className="nft-txpreview-property">
-            <div className="nft-txpreview-property-label">Purchase Date</div>
+            <div className="nft-txpreview-property-label">
+              {t('component.ModalPreviewNFTItem.FieldLabel.PurschaseDate')}
+            </div>
             <div className="nft-txpreview-property-value">
               {/* todo */}
               {(nft as any)?.pay_token?.date_at || '-'}
             </div>
           </div>
           <div className="nft-txpreview-property">
-            <div className="nft-txpreview-property-label">Last Price</div>
+            <div className="nft-txpreview-property-label">
+              {t('component.ModalPreviewNFTItem.FieldLabel.LastPrice')}
+            </div>
             <div className="nft-txpreview-property-value">
               {(nft as any)?.usd_price
                 ? `$${splitNumberByStep(

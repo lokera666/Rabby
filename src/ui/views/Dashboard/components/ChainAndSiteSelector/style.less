@@ -1,11 +1,11 @@
 .recent-connections {
-  background-color: #ffffff;
+  background-color: var(--r-neutral-bg-1, #FFF);
   position: relative;
   flex: 1;
-  padding: 20px 20px 0;
+  padding: 14px 20px;
   .ant-badge {
     .ant-badge-count {
-      background-color: #8697ff;
+      background-color: var(--r-blue-default, #7084ff);
       padding: 2px 6px;
       font-size: 13px;
       line-height: 1;
@@ -15,6 +15,9 @@
     }
     &.alert .ant-badge-count {
       background-color: #ec5151;
+    }
+    &.round .ant-badge-count {
+      padding: 2px 4.5px !important;
     }
   }
   .title {
@@ -27,28 +30,29 @@
     // height: 258px;
     display: flex;
     justify-content: flex-start;
-    padding: 13px;
-    padding-bottom: 0;
+    padding: 10px 8px;
+    padding-right: 7px;
     flex-direction: column;
-    background: @color-bg;
-    border-radius: 6px;
+    background: var(--r-neutral-card-2, #f5f6fa);
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
     position: relative;
     .direction-pannel {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 8px;
       .disable-direction,
       .direction {
         position: relative;
-        width: 106px;
-        height: 72px;
+        width: 115px;
+        height: 76px;
         border-radius: 4px;
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: center;
         font-weight: 500;
+        font-size: 14px;
+        color: var(--r-neutral-title-1, rgba(25, 41, 69, 1));
         .images {
           width: 28px;
           height: 28px;
@@ -71,12 +75,7 @@
           top: 7px;
         }
         &:hover {
-          background: linear-gradient(
-              0deg,
-              rgba(0, 0, 0, 0.05),
-              rgba(0, 0, 0, 0.05)
-            ),
-            @color-bg;
+          background: var(--r-blue-light-2, #eef1ff);
         }
       }
       .disable-direction {
@@ -103,82 +102,89 @@
         font-weight: 400;
       }
     }
+  }
+  .price-viewer {
+    display: flex;
+    padding: 8px 12px;
+    position: relative;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+    border-top: 0.5px solid var(--r-neutral-line, #d3d8e0);
+    background: var(--r-neutral-card-2, #f2f4f7);
 
-    .price-viewer {
+    .eth-price,
+    .gas-container {
       display: flex;
-      padding: 11px 3px;
-      width: 334px;
-      position: relative;
-      .eth-price,
-      .gas-container {
-        display: flex;
-        justify-content: flex-start;
-        flex: 1;
-        align-items: center;
-        .gasprice {
-          font-weight: 500;
-          font-size: 15px;
-          line-height: 18px;
-          padding: 0 6px 0 8px;
-          color: @color-title;
-        }
-        .positive {
-          font-size: 12px;
-          text-align: right;
-          color: #27c193;
-          padding-top: 2px;
-        }
-        .depositive {
-          .positive;
-          color: #ec5151;
-          padding-top: 2px;
-        }
-        .even {
-          .positive;
-          color: @color-comment-1;
-          padding-top: 2px;
-        }
-        .ant-skeleton-button {
-          width: 60px;
-          height: 18px;
-          background-color: #e5e9ef;
-          border-radius: 2px;
-          margin-left: 8px;
-          opacity: 0.6;
-        }
+      justify-content: flex-start;
+      flex: 1;
+      align-items: center;
+
+      .gasprice {
+        font-size: 13px;
+        line-height: 15px;
+        font-weight: 500;
+        margin-left: 6px;
+        color: var(--r-neutral-title-1, #192945);
       }
-      .eth-price .ant-skeleton-button {
-        width: 100px;
+
+      .positive {
+        font-size: 12px;
+        line-height: 14px;
+        text-align: right;
+        color: #27c193;
+        margin-left: 4px;
       }
-      .gas-container {
-        position: relative;
-        justify-content: flex-end;
-        .gasprice {
-          padding: 0 4px 0 10px;
-        }
-        .gwei {
-          color: @color-comment-1;
-          line-height: 18px;
-        }
+
+      .depositive {
+        .positive;
+        color: #ec5151;
       }
-      .gas-container::before {
-        content: '';
-        position: relative;
-        margin-right: 16px;
-        height: 24px;
-        bottom: 0px;
-        width: 1px;
-        border-left: 1px solid @color-border;
+
+      .even {
+        .positive;
+        color: @color-comment-1;
+      }
+
+      .ant-skeleton-button {
+        width: 60px;
+        height: 16px;
+        background-color: #e5e9ef;
+        border-radius: 2px;
+        margin-left: 8px;
+        opacity: 0.6;
       }
     }
-    .price-viewer::before {
-      content: '';
-      position: absolute;
-      top: 0px;
-      left: 0px;
-      height: 1px;
-      width: 338px;
-      border-top: 1px solid @color-border;
+
+    .eth-price .ant-skeleton-button {
+      width: 100px;
+    }
+
+    .gas-container {
+      position: relative;
+      margin-left: auto;
+      flex: initial;
+      &::after {
+        position: absolute;
+        content: '';
+        width: 0;
+        height: 20px;
+        left: -12px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: var(--r-neutral-line, #d3d8e0);
+        border-left: 0.5px solid var(--r-neutral-line, #d3d8e0);
+      }
+
+      .gasprice {
+        padding: 0 2px 0 3px;
+        margin-left: 0;
+      }
+
+      .gwei {
+        color: var(--r-neutral-foot, #6a7587);
+        line-height: 16px;
+        font-size: 12px;
+      }
     }
   }
   .icon-no-data {
@@ -196,7 +202,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: @color-bg;
+    background: var(--r-neutral-card-2, #f5f6fa);
     border-radius: 6px;
     padding: 12px 16px;
     &.higher {
@@ -217,8 +223,8 @@
       box-sizing: border-box;
       border-radius: 6px;
       &:hover {
-        background: rgba(134, 151, 255, 0.1);
-        border: 0.5px solid #8697ff;
+        background: var(--r-blue-light-1, #eef1ff);
+        border: 0.5px solid var(--r-blue-default, #7084ff);
         box-sizing: border-box;
         border-radius: 6px;
       }
@@ -237,7 +243,7 @@
       align-items: center;
       width: 100%;
       .arrowColor {
-        color: #8697ff;
+        color: var(--r-blue-default, #7084ff);
       }
       .right {
         display: flex;

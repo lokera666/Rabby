@@ -3,14 +3,17 @@ import clsx from 'clsx';
 import React, { ReactNode } from 'react';
 import ReactDOM from 'react-dom';
 import './index.less';
-import { SvgIconCross } from 'ui/assets';
+import { ReactComponent as RcIconCloseCC } from 'ui/assets/component/close-cc.svg';
+
 const closeIcon = (
-  <SvgIconCross className="w-14 fill-current text-gray-content" />
+  <RcIconCloseCC className="w-[20px] h-[20px] text-r-neutral-foot" />
 );
 
-interface PopupProps extends DrawerProps {
+export interface PopupProps extends DrawerProps {
   onCancel?(): void;
   children?: ReactNode;
+  isSupportDarkMode?: boolean;
+  isNew?: boolean;
 }
 
 const Popup = ({
@@ -20,13 +23,22 @@ const Popup = ({
   className,
   onClose,
   onCancel,
+  isSupportDarkMode,
+  isNew,
   ...rest
 }: PopupProps) => (
   <Drawer
     onClose={onClose || onCancel}
     closable={closable}
     placement={placement}
-    className={clsx('custom-popup', className)}
+    className={clsx(
+      'custom-popup',
+      isSupportDarkMode && 'is-support-darkmode',
+      className,
+      {
+        'is-new': isNew,
+      }
+    )}
     destroyOnClose
     closeIcon={closeIcon}
     {...rest}

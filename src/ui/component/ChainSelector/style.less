@@ -1,43 +1,34 @@
 @import '../../style/var.less';
 
 .chain-selector {
-  height: 48px;
+  height: 32px;
   cursor: pointer;
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  -webkit-user-select: none;
+  user-select: none;
   background: rgba(134, 151, 255, 0.12);
-  border: 1px solid rgba(134, 151, 255, 0.4);
-  box-shadow: 0px 2px 12px rgba(134, 151, 255, 0.12);
-  border-radius: 5px;
-  padding: 4px 0 4px 12px;
+  border: 0.5px solid var(--r-neutral-line, rgba(255, 255, 255, 0.1));
+  border: 1px solid var(--r-neutral-line, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  padding: 8px 4px 8px 8px;
   font-weight: 500;
+  max-width: 180px;
   .chain-logo {
-    width: 28px;
-    height: 28px;
-    margin-right: 8px;
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
   }
-  .icon-arrow-down {
-    fill: #8697ff;
-    width: 12px;
-    height: 12px;
-    margin: 0 10px 0 12px;
-    transition: transform 0.3s;
-    transform: rotate(0);
-  }
-  &.active {
-    .icon-arrow-down {
-      transform: rotate(180deg);
-    }
+  .icon {
+    width: 16px;
+    height: 16px;
+    margin-left: 2px;
   }
 }
 
 .hover {
-  background: rgba(134, 151, 255, 0.5);
-  border: 1px solid rgba(134, 151, 255, 0.4);
-  box-shadow: 0px 2px 12px rgba(134, 151, 255, 0.12);
-  border-radius: 5px;
+  background: var(--r-blue-light-1, #eef1ff);
+  border: 1px solid rgba(134, 151, 255, 0.5);
 }
 .chain-selector-options {
   width: 100%;
@@ -51,9 +42,10 @@
   }
 }
 
-.chain-selector__modal {
+.chain-selector__modal.chain-selector__modal {
   .ant-drawer-content-wrapper {
     max-height: calc(100vh - 40px);
+    height: 494px !important;
   }
   header {
     padding-top: 8px;
@@ -61,16 +53,23 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    background-color: #fff;
+    background: var(--r-neutral-bg-1, #3d4251);
+
     .ant-input-affix-wrapper {
-      border: 1px solid #e5e9ef;
+      border: 1px solid var(--r-neutral-line, rgba(255, 255, 255, 0.1));
+      background: var(--r-neutral-card-1, rgba(255, 255, 255, 0.06));
       border-radius: 6px;
-      height: 36px;
+      height: 44px;
+      border-width: 1px;
+
+      input::placeholder {
+        color: var(--r-neutral-foot, #6a7587);
+      }
     }
 
     .ant-input-affix-wrapper:focus,
     .ant-input-affix-wrapper-focused {
-      border-color: #b0bdff;
+      border-color: var(--r-blue-default);
     }
   }
   .ant-drawer-header {
@@ -85,18 +84,19 @@
       font-weight: 400;
       font-size: 12px;
       line-height: 14px;
-      color: @color-comment-1;
+      color: var(--r-neutral-foot, #6a7587);
       margin-bottom: 2px;
     }
     .chain-selector-site {
       font-weight: 500;
       font-size: 13px;
       line-height: 15px;
-      color: @color-title;
+      color: var(--r-neutral-title-1, #192945);
     }
   }
   .ant-drawer-body {
     padding-top: 0 !important;
+    // position: relative;
     &::-webkit-scrollbar {
       display: none !important;
     }
@@ -130,7 +130,6 @@
     margin-top: 16px;
 
     span {
-      font-family: Roboto;
       font-style: normal;
       font-weight: normal;
       font-size: 12px;
@@ -147,6 +146,137 @@
     margin-top: 16px;
   }
 }
+
+.chain-selector-large-modal {
+  .ant-modal-close {
+    .ant-modal-close-x {
+      height: 64px;
+      line-height: 64px;
+    }
+  }
+  .ant-modal-content {
+    background: var(--r-neutral-bg2, #f2f4f7);
+    box-shadow: 0px 24px 40px 0px rgba(19, 20, 26, 0.25);
+    border-radius: 8px;
+  }
+  .ant-modal-body {
+    padding: 0;
+    overflow: auto;
+    max-height: calc(100vh - 150px) !important;
+    height: 680px !important;
+    padding-bottom: 20px;
+  }
+  header {
+    padding-top: 8px;
+    padding-bottom: 20px;
+    padding-left: 20px;
+    padding-right: 20px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--r-neutral-bg2, #f2f4f7);
+
+    .modal-title {
+      color: var(--r-neutral-title1, #192945);
+      text-align: center;
+      font-size: 20px;
+      font-weight: 500;
+      line-height: 24px;
+      padding-top: 20px;
+      padding-bottom: 20px;
+    }
+
+    .ant-input-affix-wrapper {
+      border: 1px solid var(--r-neutral-line, rgba(255, 255, 255, 0.1));
+      background: var(--r-neutral-card-1, rgba(255, 255, 255, 0.06));
+      border-radius: 6px;
+      height: 48px;
+    }
+
+    .ant-input-affix-wrapper:focus,
+    .ant-input-affix-wrapper-focused {
+      border-color: #b0bdff;
+    }
+    .ant-input {
+      background-color: transparent;
+      color: var(--r-neutral-title-1, #192945);
+    }
+  }
+  .ant-drawer-header {
+    padding: 12px 20px;
+    background: linear-gradient(
+      180deg,
+      #eff1ff 0%,
+      rgba(238, 234, 255, 0) 111.46%
+    );
+    border: none;
+    .chain-selector-tips {
+      font-weight: 400;
+      font-size: 12px;
+      line-height: 14px;
+      color: var(--r-neutral-foot, #6a7587);
+      margin-bottom: 2px;
+    }
+    .chain-selector-site {
+      font-weight: 500;
+      font-size: 13px;
+      line-height: 15px;
+      color: var(--r-neutral-title-1, #192945);
+    }
+  }
+  // .ant-drawer-body {
+  //   position: relative;
+  // }
+  .chain-selector-large-modal-content {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .select-chain-list {
+    background: var(--r-neutral-card1, #fff);
+  }
+
+  .no-pinned-container {
+    width: 360px;
+    height: 56px;
+    background: @color-bg;
+    border-radius: 6px;
+    font-weight: normal;
+    font-size: 12px;
+    line-height: 14px;
+    text-align: center;
+    color: @color-comment-1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .cardg {
+    background: @color-bg;
+  }
+  .all-chais {
+    width: 100%;
+    background: #ffffff;
+    display: flex;
+    justify-content: center;
+    margin-top: 16px;
+
+    span {
+      font-style: normal;
+      font-weight: normal;
+      font-size: 12px;
+      line-height: 14px;
+      text-align: center;
+      color: @color-comment-1;
+      cursor: pointer;
+    }
+  }
+
+  .tip {
+    margin-top: 16px;
+  }
+}
+
 .chain-tag-selector {
   min-width: 116px;
   display: inline-flex;
@@ -174,7 +304,7 @@
 
 .select-chain {
   &-list {
-    background: #f5f6fa;
+    background: var(--r-neutral-card-2, rgba(255, 255, 255, 0.06));
     border-radius: 6px;
     & + & {
       margin-top: 24px;
@@ -185,46 +315,66 @@
     align-items: center;
     padding: 14px 16px;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 6px;
     position: relative;
     border: 1px solid transparent;
+    height: 56px;
+
     &::after {
       content: '';
       position: absolute;
       bottom: -1px;
       left: 16px;
       right: 16px;
-      border-bottom: 1px solid @color-border;
+      border-bottom: 1px solid var(--r-neutral-line, rgba(255, 255, 255, 0.1));
+    }
+
+    .chain-icon-comp {
+      img {
+        width: 28px;
+        height: 28px;
+      }
     }
 
     &-icon {
       width: 24px;
       height: 24px;
+      border-radius: 50%;
+    }
+    &-info {
+      margin-left: 12px;
     }
     &-name {
       font-weight: 500;
       font-size: 15px;
       line-height: 18px;
-      color: @color-title;
-      margin-left: 12px;
+      color: var(--r-neutral-title-1, #192945);
+    }
+    &-balance {
+      color: var(--r-neutral-foot, #6a7587);
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
     }
     &-star {
       margin-left: 8px;
       display: none;
-      &.is-active {
-        display: block;
-      }
     }
     &-checked {
-      margin-left: auto;
+      margin-left: 16px;
     }
-    &:hover {
-      // background: rgba(134, 151, 255, 0.1);
-      background-color: #dce0f9;
-      border: 1px solid #8697ff;
+    &:not(.select-chain-item-disabled):hover {
+      background: var(--r-blue-light-1, #eef1ff);
+      border: 1px solid var(--r-blue-default, #7084ff);
       &::after {
         display: none;
       }
+      .select-chain-item-star {
+        display: block;
+      }
+    }
+    &.select-chain-item-disabled:hover {
       .select-chain-item-star {
         display: block;
       }

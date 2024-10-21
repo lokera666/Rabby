@@ -41,6 +41,7 @@ const ContactItemWrapper = styled.div`
 `;
 
 const ContactItem = ({ item }: { item: ContactBookItem }) => {
+  const { t } = useTranslation();
   const handleClickCopy = () => {
     const clipboard = new ClipboardJS('.address', {
       text: function () {
@@ -55,7 +56,7 @@ const ContactItem = ({ item }: { item: ContactBookItem }) => {
           <div>
             <div className="flex gap-4 mb-4">
               <img src={IconSuccess} alt="" />
-              Copied
+              {t('global.copied')}
             </div>
             <div className="text-white">{item.address}</div>
           </div>
@@ -66,7 +67,7 @@ const ContactItem = ({ item }: { item: ContactBookItem }) => {
   };
   return (
     <ContactItemWrapper>
-      <p className="name text-gray-title">{item.name}</p>
+      <p className="name text-r-neutral-title1">{item.name}</p>
       <p className="address" title={item.address}>
         {ellipsis(item.address)}
         <img
@@ -123,9 +124,11 @@ const Contacts = ({
         <img
           className="w-[100px] h-[100px]"
           src="/images/nodata-tx.png"
-          alt="no data"
+          alt={t('page.dashboard.contacts.noDataLabel')}
         />
-        <p className="mt-[12px] text-14 text-gray-subTitle">{t('No data')}</p>
+        <p className="mt-[12px] text-14 text-r-neutral-body">
+          {t('page.dashboard.contacts.noData')}
+        </p>
       </div>
     );
   }, [contacts?.length]);
@@ -142,12 +145,10 @@ const Contacts = ({
       })}
     >
       <PageHeader forceShowBack onBack={handleCancel}>
-        {t('Old Contact List')}
+        {t('page.dashboard.contacts.oldContactList')}
       </PageHeader>
-      <div className="desc mb-20 text-gray-subTitle">
-        Because of the merging of contacts and watch model addresses, the old
-        contacts will be backed up for you here and after some time we will
-        delete the list.Please add in time if you continue to use.
+      <div className="desc mb-20 text-r-neutral-body">
+        {t('page.dashboard.contacts.oldContactListDescription')}
       </div>
       <ContractListElement>
         {contacts.map((contact) => (

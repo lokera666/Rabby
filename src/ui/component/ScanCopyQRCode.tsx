@@ -4,41 +4,47 @@ import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import QRCode from 'qrcode.react';
 import { Input, message } from 'antd';
-import { useHover } from 'ui/utils';
-import WalletConnectBridgeModal from './WalletConnectBridgeModal';
 import IconSuccess from 'ui/assets/success.svg';
 import IconBridgeChange from 'ui/assets/bridgechange.svg';
 import IconQRCodeRefresh from 'ui/assets/qrcoderefresh.svg';
-import IconCopy from 'ui/assets/urlcopy.svg';
-import IconRefresh from 'ui/assets/urlrefresh.svg';
+import { ReactComponent as RcIconCopy } from 'ui/assets/urlcopy.svg';
+import { ReactComponent as RcIconRefresh } from 'ui/assets/urlrefresh.svg';
+import { ConnectStatus } from './WalletConnect/ConnectStatus';
+import { useSessionStatus } from './WalletConnect/useSessionStatus';
+import { Account } from '@/background/service/preference';
+import Spin from './Spin';
+import ThemeIcon from './ThemeMode/ThemeIcon';
 
 interface Props {
   showURL: boolean;
   changeShowURL: (active: boolean) => void;
   refreshFun(): void;
   qrcodeURL: string;
-  onBridgeChange(val: string): void;
-  bridgeURL: string;
-  defaultBridge: string;
   canChangeBridge?: boolean;
+  brandName?: string;
+  account?: Account;
 }
 const ScanCopyQRCode: React.FC<Props> = ({
   showURL = false,
   changeShowURL,
   qrcodeURL,
   refreshFun,
-  onBridgeChange,
-  bridgeURL,
-  defaultBridge,
   canChangeBridge = true,
+  brandName,
+  account,
 }) => {
-  const [isHovering, hoverProps] = useHover();
+  // Disable hover
+  // const [isHovering, hoverProps] = useHover();
+  const isHovering = false;
+  const hoverProps = {};
   const { t } = useTranslation();
   const [copySuccess, setCopySuccess] = useState(false);
   const [showOpenApiModal, setShowOpenApiModal] = useState(false);
+  const { status } = useSessionStatus(account);
+  const rootRef = React.useRef<HTMLDivElement>(null);
 
   const handleCopyCurrentAddress = () => {
-    const clipboard = new ClipboardJS('.wallet-connect', {
+    const clipboard = new ClipboardJS(rootRef.current!, {
       text: function () {
         return qrcodeURL;
       },
@@ -51,37 +57,50 @@ const ScanCopyQRCode: React.FC<Props> = ({
       }, 1000);
       message.success({
         icon: <img src={IconSuccess} className="icon icon-success" />,
-        content: t('Copied'),
+        content: t('global.copied'),
         duration: 0.5,
       });
       clipboard.destroy();
     });
   };
 
-  const handleBridgeServerChange = (val: string) => {
-    onBridgeChange(val);
-    setShowOpenApiModal(false);
-  };
+  React.useEffect(() => {
+    // refresh when status is not connected
+    if (status && status !== 'CONNECTED') {
+      refreshFun();
+    }
+  }, [status]);
 
   return (
-    <div>
-      <div className="button-container mt-28 mb-16">
+    <div ref={rootRef}>
+      <div className="button-container mt-32 mb-24">
         <div
           className={clsx('cursor-pointer', { active: !showURL })}
           onClick={() => changeShowURL(false)}
         >
-          {t('QR code')}
+          {t('page.newAddress.walletConnect.qrCode')}
         </div>
         <div
           className={clsx('cursor-pointer', { active: showURL })}
           onClick={() => changeShowURL(true)}
         >
-          {t('URL')}
+          {t('page.newAddress.walletConnect.url')}
         </div>
       </div>
       {!showURL && (
-        <div className="qrcode cursor-pointer mb-0" {...hoverProps}>
-          <QRCode value={qrcodeURL} size={170} />
+        <div className="qrcode mb-0 relative overflow-hidden" {...hoverProps}>
+          {!qrcodeURL ? (
+            <div
+              className={clsx(
+                'bg-white bg-opacity-70 absolute inset-0',
+                'flex items-center justify-center'
+              )}
+            >
+              <Spin />
+            </div>
+          ) : (
+            <QRCode value={qrcodeURL} size={170} />
+          )}
           {isHovering && (
             <div className="refresh-container">
               <div className="refresh-wrapper">
@@ -96,46 +115,50 @@ const ScanCopyQRCode: React.FC<Props> = ({
         </div>
       )}
       {showURL && (
-        <div className="url-container mx-auto w-[336px] mt-0 mb-0">
-          <Input.TextArea
-            className="h-[200px] w-[336px] p-16 block"
-            spellCheck={false}
-            value={qrcodeURL}
-            disabled={true}
-          />
-          <img
-            src={IconRefresh}
+        <div className="url-container mx-auto w-[336px] mt-0 mb-0 h-[200px] overflow-hidden">
+          {!qrcodeURL ? (
+            <div
+              className={clsx(
+                'bg-white bg-opacity-70 absolute inset-0',
+                'flex items-center justify-center'
+              )}
+            >
+              <Spin />
+            </div>
+          ) : (
+            <Input.TextArea
+              className="h-[200px] w-[336px] p-16 block bg-r-neutral-bg-1 rounded-[8px]"
+              spellCheck={false}
+              value={qrcodeURL}
+              disabled={true}
+              prefixCls="url-container-textarea"
+            />
+          )}
+          <ThemeIcon
+            src={RcIconRefresh}
             onClick={refreshFun}
-            className="icon-refresh-wallet cursor-pointer"
+            className="w-16 h-16 icon-refresh-wallet cursor-pointer"
           />
-          <img
-            src={IconCopy}
+          <ThemeIcon
+            src={RcIconCopy}
             onClick={handleCopyCurrentAddress}
-            className={clsx('icon-copy-wallet cursor-pointer', {
+            className={clsx('w-16 h-16 icon-copy-wallet cursor-pointer', {
               success: copySuccess,
             })}
           />
         </div>
       )}
-      <div className="text-12 text-gray-content text-center mb-24 mt-12">
-        WalletConnect will be unstable if you use VPN.
-      </div>
+
       {canChangeBridge && (
         <div
           className="change-bridge"
           onClick={() => setShowOpenApiModal(true)}
         >
           <img src={IconBridgeChange} />
-          {t('Change bridge server')}
+          {t('page.newAddress.walletConnect.changeBridgeServer')}
         </div>
       )}
-      <WalletConnectBridgeModal
-        defaultValue={defaultBridge}
-        value={bridgeURL}
-        visible={showOpenApiModal}
-        onChange={handleBridgeServerChange}
-        onCancel={() => setShowOpenApiModal(false)}
-      />
+      <ConnectStatus account={account} uri={qrcodeURL} brandName={brandName} />
     </div>
   );
 };
